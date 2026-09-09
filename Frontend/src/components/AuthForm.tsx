@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import eventImage from "../assets/event.png";
 
@@ -19,6 +19,7 @@ interface FormData {
 
 function AuthForm({ type }: AuthFormProps) {
   const isLogin = type === "login";
+  const navigate = useNavigate();
 
   const [formData, setFormData] = useState<FormData>({
     name: "",
@@ -28,6 +29,8 @@ function AuthForm({ type }: AuthFormProps) {
   });
 
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -38,6 +41,7 @@ function AuthForm({ type }: AuthFormProps) {
     }));
 
     setError("");
+    setSuccess("");
   };
 
   const validateForm = (): boolean => {
@@ -74,7 +78,7 @@ function AuthForm({ type }: AuthFormProps) {
     return true;
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     const isValid = validateForm();
@@ -83,8 +87,52 @@ function AuthForm({ type }: AuthFormProps) {
       return;
     }
 
-    // Backend authentication will be connected later.
-    console.log(isLogin ? "Login data:" : "Signup data:", formData);
+    setIsSubmitting(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const apiBase = import.meta.env.VITE_API_URL || "";
+      const endpoint = `${apiBase}${isLogin ? "/api/auth/login" : "/api/auth/register"}`;
+      const payload = isLogin
+        ? { email: formData.email, password: formData.password }
+        : { name: formData.name, email: formData.email, password: formData.password };
+
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        const errorMsg =
+          data.message ||
+          (Array.isArray(data.errors) && data.errors[0]?.msg) ||
+          "Something went wrong. Please try again.";
+        throw new Error(errorMsg);
+      }
+
+      if (isLogin) {
+        localStorage.setItem("authToken", data.token);
+        localStorage.setItem("authUser", JSON.stringify(data.user));
+        setSuccess("Signed in successfully! Redirecting...");
+        setTimeout(() => {
+          navigate("/");
+        }, 500);
+      } else {
+        setFormData({ name: "", email: "", password: "", confirmPassword: "" });
+        setSuccess("Account created successfully! Redirecting to sign in...");
+        setTimeout(() => {
+          navigate("/login");
+        }, 1200);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to reach the server.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -188,6 +236,14 @@ function AuthForm({ type }: AuthFormProps) {
               </div>
             )}
 
+            {/* Success */}
+
+            {success && (
+              <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2.5">
+                <p className="text-sm font-medium text-emerald-700">{success}</p>
+              </div>
+            )}
+
             {/* Error */}
 
             {error && (
@@ -198,8 +254,8 @@ function AuthForm({ type }: AuthFormProps) {
 
             {/* Submit button */}
 
-            <Button type="submit" fullWidth>
-              {isLogin ? "Sign in" : "Create account"}
+            <Button type="submit" fullWidth disabled={isSubmitting}>
+              {isSubmitting ? "Please wait..." : isLogin ? "Sign in" : "Create account"}
             </Button>
           </form>
 
