@@ -6,6 +6,7 @@ import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import authRouter from "./routes/auth";
+import eventsRouter from "./routes/events";
 import { errorHandler, notFound } from "./middleware/errors";
 
 const app = express();
@@ -32,6 +33,7 @@ app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/register", authLimiter);
 app.use("/api/auth", authRouter);
+app.use("/api/events", eventsRouter);
 
 app.use(notFound);
 app.use(errorHandler);

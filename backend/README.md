@@ -1,38 +1,30 @@
-Backend API (Express + TypeScript)
+# Backend API (Express + TypeScript)
 
-Quick start
+## Project Setup
 
-1. Copy `.env.example` to `.env`, then supply your MySQL password and a long random `JWT_SECRET`.
+### 1. Environment Configuration
 
-```
-
-2. Install:
+Copy `.env.example` to `.env` and set your MySQL credentials and `JWT_SECRET`:
 
 ```bash
-cd backend
+cp .env.example .env
+```
+
+### 2. Install Dependencies
+
+```bash
 npm install
 ```
 
-3. Run in development:
+### 3. Run the Application
 
+**Development Mode:**
 ```bash
 npm run dev
 ```
 
-Auth endpoints
-
-- POST `/api/auth/register` { name, email, password }
-- POST `/api/auth/login` { email, password }
-- GET `/api/auth/me` with `Authorization: Bearer <token>`
-
-Database schema (example SQL):
-
-```sql
-CREATE TABLE users (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  name VARCHAR(255) NOT NULL,
-  email VARCHAR(255) NOT NULL UNIQUE,
-  password VARCHAR(255) NOT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+**Production Build:**
+```bash
+npm run build
+npm start
 ```

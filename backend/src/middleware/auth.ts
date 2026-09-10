@@ -40,3 +40,33 @@ export function requireAuth(req: AuthenticatedRequest, res: Response, next: Next
     return res.status(401).json({ message: "Invalid or expired authentication token" });
   }
 }
+
+export function optionalAuth(req: AuthenticatedRequest, _res: Response, next: NextFunction) {
+  const authorization = req.header("authorization");
+  const token = authorization?.startsWith("Bearer ") ? authorization.slice(7) : undefined;
+
+  if (!token) {
+    return next();
+  }
+
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    return next();
+  }
+
+  try {
+    const payload = jwt.verify(token, secret);
+    if (
+      typeof payload !== "string" &&
+      typeof payload.id === "number" &&
+      typeof payload.name === "string" &&
+      typeof payload.email === "string"
+    ) {
+      req.user = { id: payload.id, name: payload.name, email: payload.email };
+    }
+  } catch {
+    // Proceed as unauthenticated
+  }
+
+  return next();
+}
