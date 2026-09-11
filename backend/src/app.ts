@@ -27,13 +27,23 @@ const authLimiter = rateLimit({
   message: { message: "Too many authentication attempts. Try again later." }
 });
 
+const refreshLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 60,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { message: "Too many token refresh requests. Try again later." }
+});
+
 app.get("/", (_req, res) => res.json({ ok: true }));
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/register", authLimiter);
+app.use("/api/auth/refresh", refreshLimiter);
 app.use("/api/auth", authRouter);
 app.use("/api/events", eventsRouter);
+
 
 app.use(notFound);
 app.use(errorHandler);

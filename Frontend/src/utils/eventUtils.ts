@@ -1,4 +1,4 @@
-export type EventComputedStatus = "Upcoming" | "Ongoing" | "Finished";
+export type EventComputedStatus = "Upcoming" | "Ongoing" | "Past";
 
 export function formatTime(timeStr?: string): string {
   if (!timeStr) return "";
@@ -48,7 +48,7 @@ export function formatDateTime(
 }
 
 /**
- * Computes event status ("Upcoming", "Ongoing", or "Finished")
+ * Computes event status ("Upcoming", "Ongoing", or "Past")
  * dynamically based on current time versus the meeting's From and To timings.
  */
 export function computeEventStatus(
@@ -106,7 +106,7 @@ export function computeEventStatus(
   } else if (now >= startDateTime && now <= endDateTime) {
     return "Ongoing";
   } else {
-    return "Finished";
+    return "Past";
   }
 }
 
@@ -118,6 +118,7 @@ export function getEffectiveEventStatus(event: {
   time: string;
   endTime?: string;
   endDate?: string;
+  status?: string;
 }): EventComputedStatus {
   return computeEventStatus(event.date, event.time, event.endTime, event.endDate);
 }
@@ -146,6 +147,7 @@ export function getStatusBadge(status?: string): string {
   switch (status) {
     case "Ongoing":
       return "bg-emerald-50 text-emerald-700 border border-emerald-200";
+    case "Past":
     case "Finished":
       return "bg-neutral-100 text-neutral-600 border border-neutral-200";
     case "Upcoming":
@@ -153,3 +155,17 @@ export function getStatusBadge(status?: string): string {
       return "bg-indigo-50 text-indigo-700 border border-indigo-200";
   }
 }
+
+export function getStatusText(status?: string): string {
+  switch (status) {
+    case "Ongoing":
+      return "Ongoing Event";
+    case "Past":
+    case "Finished":
+      return "Past Event";
+    case "Upcoming":
+    default:
+      return "Upcoming Event";
+  }
+}
+

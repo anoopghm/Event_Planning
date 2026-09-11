@@ -1,7 +1,7 @@
 import { useState } from "react";
 import Modal from "../ui/Modal";
 import Button from "../ui/Button";
-import { formatDateTime, getTagStyle, getStatusBadge, getEffectiveEventStatus } from "../../utils/eventUtils";
+import { formatDateTime, getTagStyle, getStatusBadge, getEffectiveEventStatus, getStatusText } from "../../utils/eventUtils";
 import type { EventItem, AuthUser } from "../../types";
 
 interface EventDetailsModalProps {
@@ -67,11 +67,12 @@ export default function EventDetailsModal({
             />
             <div className="absolute top-3 right-3">
               <span
-                className={`inline-flex items-center rounded-xl px-3 py-1.5 text-xs font-semibold shadow-xs ${getStatusBadge(
+                className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold shadow-xs ${getStatusBadge(
                   effectiveStatus
                 )}`}
               >
-                {effectiveStatus}
+                <span className={`h-1.5 w-1.5 rounded-full ${effectiveStatus === "Ongoing" ? "bg-emerald-500 animate-pulse" : effectiveStatus === "Upcoming" ? "bg-indigo-500" : "bg-neutral-400"}`} />
+                {getStatusText(effectiveStatus)}
               </span>
             </div>
           </div>
@@ -82,11 +83,12 @@ export default function EventDetailsModal({
           {!event.imageUrl && (
             <div className="mb-2">
               <span
-                className={`inline-flex items-center rounded-xl px-3 py-1 text-xs font-semibold ${getStatusBadge(
+                className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1 text-xs font-semibold ${getStatusBadge(
                   effectiveStatus
                 )}`}
               >
-                {effectiveStatus}
+                <span className={`h-1.5 w-1.5 rounded-full ${effectiveStatus === "Ongoing" ? "bg-emerald-500 animate-pulse" : effectiveStatus === "Upcoming" ? "bg-indigo-500" : "bg-neutral-400"}`} />
+                {getStatusText(effectiveStatus)}
               </span>
             </div>
           )}
@@ -113,6 +115,10 @@ export default function EventDetailsModal({
                 <span>{event.location}</span>
               </div>
             )}
+
+            <div className="flex items-center gap-1.5 rounded-xl bg-neutral-100 px-3 py-1.5 border border-neutral-200/60">
+              <span>{event.eventType === "Private" ? "🔒 Private Event" : "🌐 Public Event"}</span>
+            </div>
 
             {event.creatorName && (
               <div className="flex items-center gap-1.5 rounded-xl bg-neutral-100 px-3 py-1.5 border border-neutral-200/60">

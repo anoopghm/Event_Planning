@@ -23,11 +23,20 @@ export interface EventItem {
   endDate?: string; // Optional end date for multi-day events
   tags: string[];
   location?: string;
-  status?: "Upcoming" | "Ongoing" | "Finished";
+  status?: "Upcoming" | "Ongoing" | "Past" | "Finished";
+  eventType?: "Public" | "Private";
   creatorId?: number | string;
   creatorName?: string;
   creatorEmail?: string;
   attendees?: Attendee[];
   imageUrl?: string;
   lastTimeUpdated?: string;
+  createdAt?: string;
 }
+
+export type EventSortOption =
+  | "event_time_asc"
+  | "event_time_desc"
+  | "popularity"
+  | "creation_time"
+  | "relevance";

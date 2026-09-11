@@ -9,6 +9,9 @@ import CreateEventModal from "../components/events/CreateEventModal";
 import ConfirmAttendanceModal from "../components/events/ConfirmAttendanceModal";
 import EventDetailsModal from "../components/events/EventDetailsModal";
 import { getEffectiveEventStatus } from "../utils/eventUtils";
+import { matchEventByLevenshtein, getEventLevenshteinScore } from "../utils/searchUtils";
+import { logoutUser } from "../utils/apiClient";
+
 
 import type { AuthUser, EventItem } from "../types";
 
@@ -63,6 +66,7 @@ export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTagFilter, setSelectedTagFilter] = useState<string>("All");
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>("All");
+  const [selectedEventTypeFilter, setSelectedEventTypeFilter] = useState<string>("All");
 
   // Feedback toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -75,10 +79,10 @@ export default function Dashboard() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("authToken");
-    localStorage.removeItem("authUser");
+    logoutUser();
     navigate("/login", { replace: true });
   };
+
 
   const openCreateModal = () => {
     setEditingEvent(null);
@@ -98,6 +102,7 @@ export default function Dashboard() {
       creatorName: user.name,
       creatorEmail: user.email,
       attendees: [],
+      createdAt: new Date().toISOString(),
     };
     const updated = [newEvent, ...events];
     setEvents(updated);
@@ -215,47 +220,81 @@ export default function Dashboard() {
 
   // Filtered events for Dashboard
   const filteredDashboardEvents = useMemo(() => {
-    return events.filter((e) => {
+    const matched = events.filter((e) => {
+      // 1. Tag filter
       const matchesTag =
         selectedTagFilter === "All" ||
         e.tags?.some((t) => t.toLowerCase() === selectedTagFilter.toLowerCase());
 
+      // 2. Status filter (Search includes all Upcoming, Ongoing, and Past events)
+      const st = getEffectiveEventStatus(e);
       const matchesStatus =
+        searchQuery.trim() !== "" ||
         selectedStatusFilter === "All" ||
-        getEffectiveEventStatus(e) === selectedStatusFilter;
+        (selectedStatusFilter === "Past" || selectedStatusFilter === "Finished"
+          ? st === "Past" || (st as string) === "Finished"
+          : st === selectedStatusFilter);
 
-      const matchesSearch =
-        searchQuery.trim() === "" ||
-        e.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        e.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (e.location && e.location.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        e.tags?.some((t) => t.toLowerCase().includes(searchQuery.toLowerCase()));
+      // 3. Event Type filter (Public or Private)
+      const matchesEventType =
+        selectedEventTypeFilter === "All" ||
+        (e.eventType || "Public") === selectedEventTypeFilter;
 
-      return matchesTag && matchesStatus && matchesSearch;
+      // 4. Levenshtein Search (title, location, description, tags)
+      const matchesSearch = matchEventByLevenshtein(e, searchQuery);
+
+      return matchesTag && matchesStatus && matchesEventType && matchesSearch;
     });
-  }, [events, selectedTagFilter, selectedStatusFilter, searchQuery]);
+
+    if (searchQuery.trim()) {
+      return matched.sort(
+        (a, b) =>
+          getEventLevenshteinScore(b, searchQuery) -
+          getEventLevenshteinScore(a, searchQuery)
+      );
+    }
+
+    return matched;
+  }, [events, selectedTagFilter, selectedStatusFilter, selectedEventTypeFilter, searchQuery]);
 
   // Filtered events strictly for My Events
   const filteredMyEvents = useMemo(() => {
-    return userCreatedEvents.filter((e) => {
+    const matched = userCreatedEvents.filter((e) => {
+      // 1. Tag filter
       const matchesTag =
         selectedTagFilter === "All" ||
         e.tags?.some((t) => t.toLowerCase() === selectedTagFilter.toLowerCase());
 
+      // 2. Status filter (Search includes all Upcoming, Ongoing, and Past events)
+      const st = getEffectiveEventStatus(e);
       const matchesStatus =
+        searchQuery.trim() !== "" ||
         selectedStatusFilter === "All" ||
-        getEffectiveEventStatus(e) === selectedStatusFilter;
+        (selectedStatusFilter === "Past" || selectedStatusFilter === "Finished"
+          ? st === "Past" || (st as string) === "Finished"
+          : st === selectedStatusFilter);
 
-      const matchesSearch =
-        searchQuery.trim() === "" ||
-        e.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        e.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (e.location && e.location.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        e.tags?.some((t) => t.toLowerCase().includes(searchQuery.toLowerCase()));
+      // 3. Event Type filter (Public or Private)
+      const matchesEventType =
+        selectedEventTypeFilter === "All" ||
+        (e.eventType || "Public") === selectedEventTypeFilter;
 
-      return matchesTag && matchesStatus && matchesSearch;
+      // 4. Levenshtein Search (title, location, description, tags)
+      const matchesSearch = matchEventByLevenshtein(e, searchQuery);
+
+      return matchesTag && matchesStatus && matchesEventType && matchesSearch;
     });
-  }, [userCreatedEvents, selectedTagFilter, selectedStatusFilter, searchQuery]);
+
+    if (searchQuery.trim()) {
+      return matched.sort(
+        (a, b) =>
+          getEventLevenshteinScore(b, searchQuery) -
+          getEventLevenshteinScore(a, searchQuery)
+      );
+    }
+
+    return matched;
+  }, [userCreatedEvents, selectedTagFilter, selectedStatusFilter, selectedEventTypeFilter, searchQuery]);
 
   return (
     <div className="min-h-screen bg-neutral-50 text-neutral-900">
@@ -312,6 +351,8 @@ export default function Dashboard() {
             onSearchChange={setSearchQuery}
             selectedStatus={selectedStatusFilter}
             onStatusChange={setSelectedStatusFilter}
+            selectedEventType={selectedEventTypeFilter}
+            onEventTypeChange={setSelectedEventTypeFilter}
             tags={myEventsUniqueTags}
             selectedTag={selectedTagFilter}
             onSelectTag={setSelectedTagFilter}
@@ -326,6 +367,7 @@ export default function Dashboard() {
               setSearchQuery("");
               setSelectedTagFilter("All");
               setSelectedStatusFilter("All");
+              setSelectedEventTypeFilter("All");
             }}
           />
         ) : (
@@ -336,6 +378,8 @@ export default function Dashboard() {
             uniqueTags={allUniqueTags}
             selectedTag={selectedTagFilter}
             onSelectTag={setSelectedTagFilter}
+            selectedEventType={selectedEventTypeFilter}
+            onSelectEventType={setSelectedEventTypeFilter}
             getTagCount={getTagCount}
             onGoToMyEvents={() => setCurrentView("my-events")}
             onOpenCreateModal={openCreateModal}

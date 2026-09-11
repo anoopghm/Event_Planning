@@ -3,6 +3,7 @@ import {
   getTagStyle,
   getEffectiveEventStatus,
   getStatusBadge,
+  getStatusText,
 } from "../../utils/eventUtils";
 import type { EventItem, AuthUser } from "../../types";
 
@@ -44,6 +45,9 @@ export default function EventCard({
       userAttendee.acknowledgedTime !== eventSchedule
   );
 
+  const yesAttendeesCount = event.attendees?.filter((a) => a.status === "yes").length || 0;
+  const totalRsvpCount = event.attendees?.length || 0;
+
   const fallbackImage =
     "https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=800&auto=format&fit=crop&q=80";
 
@@ -69,26 +73,56 @@ export default function EventCard({
             {/* Status Badge floating on thumbnail for mobile screens */}
             <div className="absolute top-2.5 right-2.5 lg:hidden">
               <span
-                className={`inline-flex items-center rounded-xl px-2.5 py-1 text-xs font-semibold shadow-xs ${getStatusBadge(
+                className={`inline-flex items-center gap-1 rounded-xl px-2.5 py-1 text-xs font-semibold shadow-xs ${getStatusBadge(
                   status
                 )}`}
               >
-                {status}
+                <span className={`h-1.5 w-1.5 rounded-full ${status === "Ongoing" ? "bg-emerald-500 animate-pulse" : status === "Upcoming" ? "bg-indigo-500" : "bg-neutral-400"}`} />
+                {getStatusText(status)}
               </span>
             </div>
           </div>
 
           {/* Details */}
           <div className="flex-1 min-w-0">
-            <h3
-              onClick={() => onViewDetails(event)}
-              className="text-base sm:text-lg font-bold text-neutral-900 hover:text-red-600 transition cursor-pointer"
-            >
-              {event.title}
-            </h3>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3
+                onClick={() => onViewDetails(event)}
+                className="text-base sm:text-lg font-bold text-neutral-900 hover:text-red-600 transition cursor-pointer"
+              >
+                {event.title}
+              </h3>
+              <span
+                className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold ${
+                  event.eventType === "Private"
+                    ? "bg-amber-50 text-amber-800 border border-amber-200/80"
+                    : "bg-blue-50 text-blue-700 border border-blue-200/80"
+                }`}
+              >
+                {event.eventType === "Private" ? "🔒 Private" : "🌐 Public"}
+              </span>
+              {/* Explicit status text pill in header */}
+              <span
+                className={`inline-flex items-center gap-1 rounded-md px-2.5 py-0.5 text-[11px] font-semibold ${getStatusBadge(
+                  status
+                )}`}
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${status === "Ongoing" ? "bg-emerald-500 animate-pulse" : status === "Upcoming" ? "bg-indigo-500" : "bg-neutral-400"}`} />
+                {getStatusText(status)}
+              </span>
+            </div>
 
-            {/* Date & Location Row */}
-            <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-neutral-500">
+            {/* Date, Location & Status Row */}
+            <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs text-neutral-500">
+              <div className="flex items-center gap-1">
+                <span className="font-semibold text-neutral-700">Status:</span>
+                <span className={`font-semibold ${status === "Ongoing" ? "text-emerald-700" : status === "Upcoming" ? "text-indigo-700" : "text-neutral-600"}`}>
+                  {getStatusText(status)}
+                </span>
+              </div>
+
+              <span className="text-neutral-300">•</span>
+
               <div className="flex items-center gap-1.5">
                 <svg
                   className="h-4 w-4 text-neutral-400 shrink-0"
@@ -130,6 +164,31 @@ export default function EventCard({
                   <span>{event.location}</span>
                 </div>
               )}
+
+              <span className="text-neutral-300">•</span>
+
+              <div
+                className="flex items-center gap-1.5 text-neutral-600"
+                title={`${yesAttendeesCount} confirmed attending (${totalRsvpCount} total responses)`}
+              >
+                <svg
+                  className="h-4 w-4 text-neutral-400 shrink-0"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+                  />
+                </svg>
+                <span className="font-medium text-[11px] sm:text-xs">
+                  {yesAttendeesCount} attending
+                  {totalRsvpCount > yesAttendeesCount && ` (${totalRsvpCount} responded)`}
+                </span>
+              </div>
             </div>
 
             {/* Tags Row */}
@@ -152,11 +211,12 @@ export default function EventCard({
         <div className="flex items-center gap-2 sm:gap-2.5 pt-2 lg:pt-0 w-full lg:w-auto shrink-0">
           {/* Desktop Status Badge (hidden on mobile, shown on thumbnail on mobile) */}
           <span
-            className={`hidden lg:inline-flex items-center rounded-xl px-3.5 py-2 text-xs font-semibold shrink-0 ${getStatusBadge(
+            className={`hidden lg:inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold shrink-0 ${getStatusBadge(
               status
             )}`}
           >
-            {status}
+            <span className={`h-1.5 w-1.5 rounded-full ${status === "Ongoing" ? "bg-emerald-500 animate-pulse" : status === "Upcoming" ? "bg-indigo-500" : "bg-neutral-400"}`} />
+            {getStatusText(status)}
           </span>
 
           {/* View Details Button */}
@@ -266,25 +326,53 @@ export default function EventCard({
         />
         <div className="absolute top-3 right-3">
           <span
-            className={`inline-flex items-center rounded-xl px-3 py-1 text-xs font-semibold shadow-xs ${getStatusBadge(
+            className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1 text-xs font-semibold shadow-xs ${getStatusBadge(
               status
             )}`}
           >
-            {status}
+            <span className={`h-1.5 w-1.5 rounded-full ${status === "Ongoing" ? "bg-emerald-500 animate-pulse" : status === "Upcoming" ? "bg-indigo-500" : "bg-neutral-400"}`} />
+            {getStatusText(status)}
           </span>
         </div>
       </div>
 
       <div className="p-5 sm:p-6 flex-1 flex flex-col justify-between">
         <div>
-          <h3
-            onClick={() => onViewDetails(event)}
-            className="text-base sm:text-lg font-bold text-neutral-900 hover:text-red-600 transition cursor-pointer"
-          >
-            {event.title}
-          </h3>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3
+              onClick={() => onViewDetails(event)}
+              className="text-base sm:text-lg font-bold text-neutral-900 hover:text-red-600 transition cursor-pointer"
+            >
+              {event.title}
+            </h3>
+            <span
+              className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold ${
+                event.eventType === "Private"
+                  ? "bg-amber-50 text-amber-800 border border-amber-200/80"
+                  : "bg-blue-50 text-blue-700 border border-blue-200/80"
+              }`}
+            >
+              {event.eventType === "Private" ? "🔒 Private" : "🌐 Public"}
+            </span>
+            {/* Status text badge in header */}
+            <span
+              className={`inline-flex items-center gap-1 rounded-md px-2.5 py-0.5 text-[11px] font-semibold ${getStatusBadge(
+                status
+              )}`}
+            >
+              <span className={`h-1.5 w-1.5 rounded-full ${status === "Ongoing" ? "bg-emerald-500 animate-pulse" : status === "Upcoming" ? "bg-indigo-500" : "bg-neutral-400"}`} />
+              {getStatusText(status)}
+            </span>
+          </div>
 
-          <div className="mt-2 flex flex-col gap-1.5 text-xs sm:text-sm text-neutral-500">
+          <div className="mt-2.5 flex flex-col gap-1.5 text-xs sm:text-sm text-neutral-500">
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className="font-semibold text-neutral-700">Status:</span>
+              <span className={`font-semibold ${status === "Ongoing" ? "text-emerald-700" : status === "Upcoming" ? "text-indigo-700" : "text-neutral-600"}`}>
+                {getStatusText(status)}
+              </span>
+            </div>
+
             <div className="flex items-center gap-1.5">
               <svg className="h-4 w-4 text-neutral-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -301,6 +389,19 @@ export default function EventCard({
                 <span>{event.location}</span>
               </div>
             )}
+
+            <div
+              className="flex items-center gap-1.5 text-xs text-neutral-600"
+              title={`${yesAttendeesCount} confirmed attending (${totalRsvpCount} total responses)`}
+            >
+              <svg className="h-4 w-4 text-neutral-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+              <span className="font-medium">
+                {yesAttendeesCount} attending
+                {totalRsvpCount > yesAttendeesCount && ` (${totalRsvpCount} responded)`}
+              </span>
+            </div>
           </div>
 
           {event.tags && event.tags.length > 0 && (
