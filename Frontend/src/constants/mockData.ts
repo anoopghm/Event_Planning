@@ -12,10 +12,15 @@ export const PRESET_TAGS = [
   "Tech",
 ];
 
-export const STATUS_OPTIONS: Array<"Upcoming" | "Ongoing" | "Finished"> = [
+export const STATUS_OPTIONS: Array<"Upcoming" | "Ongoing" | "Past"> = [
   "Upcoming",
   "Ongoing",
-  "Finished",
+  "Past",
+];
+
+export const EVENT_TYPE_OPTIONS: Array<"Public" | "Private"> = [
+  "Public",
+  "Private",
 ];
 
 export const DEFAULT_EVENTS: EventItem[] = [];

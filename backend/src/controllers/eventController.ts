@@ -2,6 +2,7 @@ import { NextFunction, Request, Response } from "express";
 import pool from "../models/db";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { AuthenticatedRequest } from "../middleware/auth";
+import { filterEventsByLevenshtein } from "../utils/searchUtils";
 
 export interface EventRow extends RowDataPacket {
   id: number;
@@ -74,9 +75,54 @@ export function parseTags(tags: unknown): string[] {
 }
 
 /**
+ * Dynamically computes real-time event status ("Upcoming", "Ongoing", or "Past")
+ */
+export function computeEventStatus(
+  dateStr: string,
+  fromTimeStr?: string,
+  toTimeStr?: string
+): "Upcoming" | "Ongoing" | "Past" {
+  if (!dateStr) return "Upcoming";
+  const now = new Date();
+  const [year, month, day] = dateStr.split("-").map(Number);
+  if (isNaN(year) || isNaN(month) || isNaN(day)) return "Upcoming";
+
+  let startHours = 0;
+  let startMinutes = 0;
+  if (fromTimeStr) {
+    const [h, m] = fromTimeStr.split(":").map(Number);
+    if (!isNaN(h)) startHours = h;
+    if (!isNaN(m)) startMinutes = m;
+  }
+  const startDateTime = new Date(year, month - 1, day, startHours, startMinutes, 0, 0);
+
+  let endHours = 23;
+  let endMinutes = 59;
+  if (toTimeStr) {
+    const [eh, em] = toTimeStr.split(":").map(Number);
+    if (!isNaN(eh)) endHours = eh;
+    if (!isNaN(em)) endMinutes = em;
+  } else if (fromTimeStr) {
+    endHours = Math.min(23, startHours + 1);
+    endMinutes = startMinutes;
+  }
+  const endDateTime = new Date(year, month - 1, day, endHours, endMinutes, 59, 999);
+
+  if (now < startDateTime) {
+    return "Upcoming";
+  } else if (now >= startDateTime && now <= endDateTime) {
+    return "Ongoing";
+  } else {
+    return "Past";
+  }
+}
+
+/**
  * Helper to format event database row into clean JSON response
  */
 function formatEvent(row: EventRow, currentUserId?: number) {
+  const dynamicStatus = computeEventStatus(row.date, row.time);
+
   return {
     id: row.id,
     title: row.title,
@@ -85,7 +131,7 @@ function formatEvent(row: EventRow, currentUserId?: number) {
     time: row.time,
     location: row.location || "",
     tags: parseTags(row.tags),
-    status: row.status || "Upcoming",
+    status: dynamicStatus,
     createdBy: row.created_by,
     creator: {
       id: row.created_by,
@@ -163,7 +209,7 @@ export async function createEvent(req: AuthenticatedRequest, res: Response, next
  */
 export async function getEvents(req: AuthenticatedRequest, res: Response, next?: NextFunction) {
   const currentUserId = req.user?.id;
-  const { tag, search, status, creator } = req.query;
+  const { tag, search, status, creator, sort, sortBy, order } = req.query;
 
   try {
     let query = `
@@ -192,13 +238,7 @@ export async function getEvents(req: AuthenticatedRequest, res: Response, next?:
     const whereConditions: string[] = [];
     const params: any[] = [];
 
-    if (search && typeof search === "string") {
-      whereConditions.push("(e.title LIKE ? OR e.description LIKE ?)");
-      const term = `%${search.trim()}%`;
-      params.push(term, term);
-    }
-
-    if (status && typeof status === "string") {
+    if (!search && status && typeof status === "string") {
       whereConditions.push("e.status = ?");
       params.push(status.trim());
     }
@@ -217,9 +257,21 @@ export async function getEvents(req: AuthenticatedRequest, res: Response, next?:
       query += ` WHERE ${whereConditions.join(" AND ")}`;
     }
 
+    const effectiveSort = (sort || sortBy || "event_time").toString().toLowerCase().trim();
+    const effectiveOrder = (order || "asc").toString().toLowerCase().trim() === "desc" ? "DESC" : "ASC";
+
+    let orderByClause = "ORDER BY e.date ASC, e.time ASC";
+    if (effectiveSort === "popularity") {
+      orderByClause = "ORDER BY yes_count DESC, no_count DESC, e.date ASC";
+    } else if (effectiveSort === "creation_time" || effectiveSort === "created_at") {
+      orderByClause = `ORDER BY e.created_at ${effectiveOrder === "ASC" ? "ASC" : "DESC"}`;
+    } else if (effectiveSort === "event_time" || effectiveSort === "time") {
+      orderByClause = `ORDER BY e.date ${effectiveOrder}, e.time ${effectiveOrder}`;
+    }
+
     query += `
       GROUP BY e.id, u.id
-      ORDER BY e.date ASC, e.time ASC
+      ${orderByClause}
     `;
 
     const [rows] = await pool.execute<EventRow[]>(query, params);
@@ -232,6 +284,36 @@ export async function getEvents(req: AuthenticatedRequest, res: Response, next?:
       events = events.filter((evt) =>
         evt.tags.some((t) => t.toLowerCase() === targetTag)
       );
+    }
+
+    // Levenshtein fuzzy search across title, location, description, and tags
+    // Searches across all Upcoming, Ongoing, and Past events
+    if (search && typeof search === "string" && search.trim() !== "") {
+      events = filterEventsByLevenshtein(events, search.trim());
+
+      // If user specified sort option while searching
+      if (effectiveSort === "popularity") {
+        events.sort((a, b) => b.rsvpSummary.yes - a.rsvpSummary.yes);
+      } else if (effectiveSort === "creation_time" || effectiveSort === "created_at") {
+        events.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      } else if (effectiveSort === "event_time" || effectiveSort === "time") {
+        events.sort((a, b) => {
+          const diff = new Date(`${a.date}T${a.time || "00:00"}`).getTime() - new Date(`${b.date}T${b.time || "00:00"}`).getTime();
+          return effectiveOrder === "DESC" ? -diff : diff;
+        });
+      }
+
+      // If status filter was also explicitly requested along with search
+      if (status && typeof status === "string" && status.trim() !== "" && status.toLowerCase() !== "all") {
+        const targetStatus = status.trim().toLowerCase();
+        events = events.filter((evt) => {
+          const s = evt.status.toLowerCase();
+          if (targetStatus === "past" || targetStatus === "finished") {
+            return s === "past" || s === "finished";
+          }
+          return s === targetStatus;
+        });
+      }
     }
 
     return res.json({

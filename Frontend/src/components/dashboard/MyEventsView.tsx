@@ -1,6 +1,8 @@
+import { useState, useMemo } from "react";
 import EventCard from "../events/EventCard";
 import TagFilter from "../events/TagFilter";
-import type { EventItem, AuthUser } from "../../types";
+import { sortEvents } from "../../utils/sortUtils";
+import type { EventItem, AuthUser, EventSortOption } from "../../types";
 
 interface MyEventsViewProps {
   events: EventItem[];
@@ -10,6 +12,8 @@ interface MyEventsViewProps {
   onSearchChange: (query: string) => void;
   selectedStatus: string;
   onStatusChange: (status: string) => void;
+  selectedEventType?: string;
+  onEventTypeChange?: (type: string) => void;
   tags: string[];
   selectedTag: string;
   onSelectTag: (tag: string) => void;
@@ -31,6 +35,8 @@ export default function MyEventsView({
   onSearchChange,
   selectedStatus,
   onStatusChange,
+  selectedEventType = "All",
+  onEventTypeChange,
   tags,
   selectedTag,
   onSelectTag,
@@ -43,8 +49,18 @@ export default function MyEventsView({
   onViewDetails,
   onClearFilters,
 }: MyEventsViewProps) {
+  const [sortBy, setSortBy] = useState<EventSortOption>("event_time_asc");
+
+  const sortedEvents = useMemo(() => {
+    return sortEvents(filteredEvents, sortBy, searchQuery);
+  }, [filteredEvents, sortBy, searchQuery]);
+
   const hasActiveFilters =
-    Boolean(searchQuery) || selectedTag !== "All" || selectedStatus !== "All";
+    Boolean(searchQuery) ||
+    selectedTag !== "All" ||
+    selectedStatus !== "All" ||
+    selectedEventType !== "All" ||
+    sortBy !== "event_time_asc";
 
   return (
     <div>
@@ -96,7 +112,7 @@ export default function MyEventsView({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => onSearchChange(e.target.value)}
-                placeholder="Search your events by title, venue, or tag..."
+                placeholder="Search your events by title, location, or description..."
                 className="w-full h-11 rounded-xl border border-neutral-300 bg-neutral-50/70 px-4 pl-10 text-sm outline-none transition placeholder:text-neutral-400 focus:border-red-500 focus:bg-white focus:ring-2 focus:ring-red-500/20 shadow-2xs"
               />
               <span className="absolute left-3.5 top-3 text-sm text-neutral-400">
@@ -114,7 +130,7 @@ export default function MyEventsView({
             </div>
 
             {/* Status Dropdown */}
-            <div className="sm:w-56">
+            <div className="sm:w-48">
               <select
                 value={selectedStatus}
                 onChange={(e) => onStatusChange(e.target.value)}
@@ -123,10 +139,56 @@ export default function MyEventsView({
                 <option value="All">All Statuses</option>
                 <option value="Upcoming">Upcoming</option>
                 <option value="Ongoing">Ongoing</option>
-                <option value="Finished">Finished</option>
+                <option value="Past">Past</option>
+              </select>
+            </div>
+
+            {/* Event Type Dropdown */}
+            <div className="sm:w-48">
+              <select
+                value={selectedEventType}
+                onChange={(e) => onEventTypeChange && onEventTypeChange(e.target.value)}
+                className="w-full h-11 rounded-xl border border-neutral-300 bg-neutral-50/70 px-4 text-sm outline-none transition focus:border-red-500 focus:bg-white cursor-pointer shadow-2xs"
+              >
+                <option value="All">All Types (Public & Private)</option>
+                <option value="Public">🌐 Public Events</option>
+                <option value="Private">🔒 Private Events</option>
+              </select>
+            </div>
+
+            {/* Sort Dropdown */}
+            <div className="sm:w-52">
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as EventSortOption)}
+                className="w-full h-11 rounded-xl border border-neutral-300 bg-neutral-50/70 px-3 text-sm font-medium text-neutral-800 outline-none transition focus:border-red-500 focus:bg-white cursor-pointer shadow-2xs"
+              >
+                <option value="event_time_asc">📅 Event Time (Soonest)</option>
+                <option value="popularity">🔥 Popularity (Most RSVPs)</option>
+                <option value="creation_time">⏱️ Creation Time (Newest)</option>
+                <option value="event_time_desc">📆 Event Time (Furthest)</option>
               </select>
             </div>
           </div>
+
+          {/* Active Search Results Indicator */}
+          {searchQuery.trim() && (
+            <div className="rounded-xl border border-neutral-800 bg-[#18181b] text-white p-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2">
+                <span>🔍</span>
+                <span>
+                  Search results for <strong className="text-red-400">"{searchQuery}"</strong> across all <strong>Upcoming</strong>, <strong>Ongoing</strong>, and <strong>Past</strong> events ({filteredEvents.length} found).
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => onSearchChange("")}
+                className="text-neutral-400 hover:text-white underline cursor-pointer self-start sm:self-auto text-xs"
+              >
+                Clear Search ✕
+              </button>
+            </div>
+          )}
 
           {/* Tags Filter */}
           <TagFilter
@@ -159,7 +221,10 @@ export default function MyEventsView({
             {hasActiveFilters && events.length > 0 && (
               <button
                 type="button"
-                onClick={onClearFilters}
+                onClick={() => {
+                  onClearFilters();
+                  setSortBy("event_time_asc");
+                }}
                 className="rounded-xl border border-neutral-300 bg-white px-5 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-50 cursor-pointer shadow-2xs"
               >
                 Clear Filters
@@ -176,7 +241,7 @@ export default function MyEventsView({
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-          {filteredEvents.map((evt) => (
+          {sortedEvents.map((evt) => (
             <EventCard
               key={evt.id}
               event={evt}

@@ -167,7 +167,7 @@ export default function Navbar({
               type="text"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
-              placeholder="Search events..."
+              placeholder="Search by title, location, description..."
               className="w-full h-10 sm:h-11 rounded-xl border border-neutral-300 bg-neutral-50/90 py-2 sm:py-2.5 pl-9 sm:pl-10 pr-8 sm:pr-9 text-xs sm:text-sm text-neutral-900 outline-none transition placeholder:text-neutral-400 focus:border-red-500 focus:bg-white focus:ring-2 focus:ring-red-500/20 shadow-2xs"
             />
             {searchQuery && (

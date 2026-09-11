@@ -5,6 +5,7 @@ import eventImage from "../../assets/event.png";
 
 import Button from "../ui/Button";
 import Input from "../ui/Input";
+import { setTokens } from "../../utils/apiClient";
 
 
 interface AuthFormProps {
@@ -116,9 +117,9 @@ function AuthForm({ type }: AuthFormProps) {
       }
 
       if (isLogin) {
-        localStorage.setItem("authToken", data.token);
-        localStorage.setItem("authUser", JSON.stringify(data.user));
+        setTokens(data.accessToken || data.token, data.refreshToken, data.user);
         setSuccess("Signed in successfully! Redirecting...");
+
         setTimeout(() => {
           navigate("/");
         }, 500);

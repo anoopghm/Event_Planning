@@ -1,7 +1,7 @@
 import { NextFunction, Request, Response, Router } from "express";
 import { body, validationResult } from "express-validator";
-import { register, login } from "../controllers/authController";
-import { AuthenticatedRequest, requireAuth } from "../middleware/auth";
+import { register, login, refresh, logout } from "../controllers/authController";
+import { AuthenticatedRequest, requireAuth, optionalAuth } from "../middleware/auth";
 
 const router = Router();
 
@@ -64,6 +64,39 @@ router.post(
     }
   }
 );
+
+router.post(
+  "/refresh",
+  [
+    body("refreshToken")
+      .trim()
+      .notEmpty()
+      .withMessage("Refresh token is required.")
+  ],
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          message: errors.array()[0].msg,
+          code: "REFRESH_TOKEN_REQUIRED",
+          errors: errors.array()
+        });
+      }
+      return await refresh(req, res, next);
+    } catch (err) {
+      return next(err);
+    }
+  }
+);
+
+router.post("/logout", optionalAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    return await logout(req, res, next);
+  } catch (err) {
+    return next(err);
+  }
+});
 
 router.get("/me", requireAuth, (req: AuthenticatedRequest, res: Response) => {
   return res.json({ user: req.user });

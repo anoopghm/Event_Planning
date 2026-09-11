@@ -37,6 +37,9 @@ function EventFormContent({
   const [endTime, setEndTime] = useState(eventToEdit?.endTime || "");
   const [location, setLocation] = useState(eventToEdit?.location || "");
   const [selectedTags, setSelectedTags] = useState<string[]>(eventToEdit?.tags || []);
+  const [eventType, setEventType] = useState<"Public" | "Private">(
+    eventToEdit?.eventType || "Public"
+  );
   const [imageUrl, setImageUrl] = useState(eventToEdit?.imageUrl || "");
   const [customTagInput, setCustomTagInput] = useState("");
   const [error, setError] = useState("");
@@ -156,6 +159,7 @@ function EventFormContent({
           location: location.trim() || undefined,
           tags: selectedTags,
           status: computedStatus,
+          eventType,
           imageUrl: finalImageUrl,
           creatorId: eventToEdit.creatorId,
           creatorName: eventToEdit.creatorName,
@@ -176,6 +180,7 @@ function EventFormContent({
         location: location.trim() || undefined,
         tags: selectedTags,
         status: computedStatus,
+        eventType,
         imageUrl: finalImageUrl,
         attendees: [],
       });
@@ -293,8 +298,60 @@ function EventFormContent({
         </div>
 
         <p className="text-[11px] text-neutral-400">
-          Status (Upcoming, Ongoing, or Finished) is calculated automatically based on these timings.
+          Status (Upcoming, Ongoing, or Past) is calculated automatically based on these timings.
         </p>
+      </div>
+
+      {/* Event Type: Public vs Private */}
+      <div>
+        <label className="block text-xs sm:text-sm font-semibold text-neutral-800 mb-1.5">
+          Event Access Type <span className="text-red-500">*</span>
+        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => setEventType("Public")}
+            className={`flex items-start gap-2.5 rounded-xl border p-3 text-left transition cursor-pointer ${
+              eventType === "Public"
+                ? "border-neutral-900 bg-neutral-900 text-white shadow-xs"
+                : "border-neutral-200 bg-white text-neutral-800 hover:bg-neutral-50"
+            }`}
+          >
+            <span className="text-xl">🌐</span>
+            <div>
+              <p className="text-xs sm:text-sm font-bold">Public Event</p>
+              <p
+                className={`text-[11px] mt-0.5 ${
+                  eventType === "Public" ? "text-neutral-300" : "text-neutral-500"
+                }`}
+              >
+                Open to all users to discover and RSVP
+              </p>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setEventType("Private")}
+            className={`flex items-start gap-2.5 rounded-xl border p-3 text-left transition cursor-pointer ${
+              eventType === "Private"
+                ? "border-neutral-900 bg-neutral-900 text-white shadow-xs"
+                : "border-neutral-200 bg-white text-neutral-800 hover:bg-neutral-50"
+            }`}
+          >
+            <span className="text-xl">🔒</span>
+            <div>
+              <p className="text-xs sm:text-sm font-bold">Private Event</p>
+              <p
+                className={`text-[11px] mt-0.5 ${
+                  eventType === "Private" ? "text-neutral-300" : "text-neutral-500"
+                }`}
+              >
+                Restricted to invited guests only
+              </p>
+            </div>
+          </button>
+        </div>
       </div>
 
       {/* Description */}

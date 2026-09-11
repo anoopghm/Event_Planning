@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from "express";
-import jwt, { JwtPayload } from "jsonwebtoken";
+import { verifyAccessToken } from "../utils/jwt";
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -14,30 +14,32 @@ export function requireAuth(req: AuthenticatedRequest, res: Response, next: Next
   const token = authorization?.startsWith("Bearer ") ? authorization.slice(7) : undefined;
 
   if (!token) {
-    return res.status(401).json({ message: "Authentication is required" });
-  }
-
-  const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    return res.status(500).json({ message: "Server authentication is not configured" });
+    return res.status(401).json({
+      message: "Authentication is required",
+      code: "AUTH_REQUIRED"
+    });
   }
 
   try {
-    const payload = jwt.verify(token, secret);
-    if (
-      typeof payload === "string" ||
-      typeof payload.id !== "number" ||
-      typeof payload.name !== "string" ||
-      typeof payload.email !== "string"
-    ) {
-      return res.status(401).json({ message: "Invalid authentication token" });
+    const payload = verifyAccessToken(token);
+    req.user = {
+      id: payload.id,
+      name: payload.name,
+      email: payload.email
+    };
+    return next();
+  } catch (err: any) {
+    if (err.name === "TokenExpiredError") {
+      return res.status(401).json({
+        message: "Access token has expired",
+        code: "TOKEN_EXPIRED"
+      });
     }
 
-    const user = payload as JwtPayload;
-    req.user = { id: user.id as number, name: user.name as string, email: user.email as string };
-    return next();
-  } catch {
-    return res.status(401).json({ message: "Invalid or expired authentication token" });
+    return res.status(401).json({
+      message: "Invalid or expired authentication token",
+      code: "INVALID_TOKEN"
+    });
   }
 }
 
@@ -49,21 +51,13 @@ export function optionalAuth(req: AuthenticatedRequest, _res: Response, next: Ne
     return next();
   }
 
-  const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    return next();
-  }
-
   try {
-    const payload = jwt.verify(token, secret);
-    if (
-      typeof payload !== "string" &&
-      typeof payload.id === "number" &&
-      typeof payload.name === "string" &&
-      typeof payload.email === "string"
-    ) {
-      req.user = { id: payload.id, name: payload.name, email: payload.email };
-    }
+    const payload = verifyAccessToken(token);
+    req.user = {
+      id: payload.id,
+      name: payload.name,
+      email: payload.email
+    };
   } catch {
     // Proceed as unauthenticated
   }
