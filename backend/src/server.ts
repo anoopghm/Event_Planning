@@ -3,6 +3,7 @@ dotenv.config();
 
 import app from "./app";
 import pool from "./models/db";
+import { initDb } from "./models/initDb";
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 4000;
 
@@ -12,6 +13,7 @@ async function start() {
   }
 
   await pool.query("SELECT 1");
+  await initDb();
 
   const server = app.listen(PORT, () => {
     console.log(`Server listening on port ${PORT}`);
