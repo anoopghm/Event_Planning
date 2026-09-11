@@ -7,36 +7,45 @@ import MyEventsView from "../components/dashboard/MyEventsView";
 import DashboardOverview from "../components/dashboard/DashboardOverview";
 import CreateEventModal from "../components/events/CreateEventModal";
 import ConfirmAttendanceModal from "../components/events/ConfirmAttendanceModal";
-import AttendeesModal from "../components/events/AttendeesModal";
+import EventDetailsModal from "../components/events/EventDetailsModal";
+import { getEffectiveEventStatus } from "../utils/eventUtils";
 
-
-import { DEMO_USERS, DEFAULT_EVENTS } from "../constants/mockData";
 import type { AuthUser, EventItem } from "../types";
 
 export default function Dashboard() {
   const navigate = useNavigate();
 
-  // Active user state
-  const [user, setUser] = useState<AuthUser>(() => {
+  // Active user state (from localStorage or safe fallback)
+  const [user] = useState<AuthUser>(() => {
     const rawUser = typeof window !== "undefined" ? localStorage.getItem("authUser") : null;
     if (rawUser) {
       try {
         return JSON.parse(rawUser);
       } catch {
-        return DEMO_USERS[0];
+        // fallback
       }
     }
-    return DEMO_USERS[0];
+    return { id: 1, name: "Organizer", email: "organizer@evently.com" };
   });
 
-  // Events state
+  // Events state (purely user-created / saved events, removing any legacy mock IDs)
   const [events, setEvents] = useState<EventItem[]>(() => {
-    if (typeof window === "undefined") return DEFAULT_EVENTS;
+    if (typeof window === "undefined") return [];
     try {
       const saved = localStorage.getItem("dashboard_events");
-      return saved ? JSON.parse(saved) : DEFAULT_EVENTS;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          // Purge legacy mock data items (evt-1 through evt-7)
+          const nonMock = parsed.filter(
+            (e: EventItem) => !e.id?.match(/^evt-[1-7]$/)
+          );
+          return nonMock;
+        }
+      }
+      return [];
     } catch {
-      return DEFAULT_EVENTS;
+      return [];
     }
   });
 
@@ -48,7 +57,7 @@ export default function Dashboard() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<EventItem | null>(null);
   const [confirmModalEvent, setConfirmModalEvent] = useState<EventItem | null>(null);
-  const [attendeesModalEvent, setAttendeesModalEvent] = useState<EventItem | null>(null);
+  const [detailsModalEvent, setDetailsModalEvent] = useState<EventItem | null>(null);
 
   // Filter & Search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -69,12 +78,6 @@ export default function Dashboard() {
     localStorage.removeItem("authToken");
     localStorage.removeItem("authUser");
     navigate("/login", { replace: true });
-  };
-
-  const handleSwitchUser = (newUser: AuthUser) => {
-    setUser(newUser);
-    localStorage.setItem("authUser", JSON.stringify(newUser));
-    showToast(`Switched active user to ${newUser.name}`);
   };
 
   const openCreateModal = () => {
@@ -130,10 +133,12 @@ export default function Dashboard() {
     }
   };
 
-  const handleAttendanceConfirm = (decision: "yes" | "no") => {
+  const handleAttendanceConfirm = (decision: "yes" | "no" | "maybe") => {
     if (!confirmModalEvent) return;
 
-    const eventSchedule = `${confirmModalEvent.date} ${confirmModalEvent.time}`;
+    const eventSchedule = confirmModalEvent.endTime
+      ? `${confirmModalEvent.date} ${confirmModalEvent.time} - ${confirmModalEvent.endTime}`
+      : `${confirmModalEvent.date} ${confirmModalEvent.time}`;
     const existingAttendees = confirmModalEvent.attendees || [];
     const filteredAttendees = existingAttendees.filter(
       (a) => String(a.userId) !== String(user.id)
@@ -167,10 +172,18 @@ export default function Dashboard() {
     showToast(
       decision === "yes"
         ? `You confirmed YES for "${confirmModalEvent.title}".`
+        : decision === "maybe"
+        ? `You responded MAYBE for "${confirmModalEvent.title}".`
         : `You responded NO for "${confirmModalEvent.title}".`
     );
   };
 
+  // User-created events (strictly creatorId === user.id)
+  const userCreatedEvents = useMemo(() => {
+    return events.filter((e) => String(e.creatorId) === String(user.id));
+  }, [events, user.id]);
+
+  // Tags for all events (Dashboard view)
   const allUniqueTags = useMemo(() => {
     const set = new Set<string>();
     events.forEach((e) => {
@@ -185,14 +198,31 @@ export default function Dashboard() {
     ).length;
   };
 
-  const filteredEvents = useMemo(() => {
+  // Tags strictly for user-created events (My Events view)
+  const myEventsUniqueTags = useMemo(() => {
+    const set = new Set<string>();
+    userCreatedEvents.forEach((e) => {
+      e.tags?.forEach((t) => set.add(t));
+    });
+    return Array.from(set);
+  }, [userCreatedEvents]);
+
+  const getMyEventsTagCount = (tag: string) => {
+    return userCreatedEvents.filter((e) =>
+      e.tags?.some((t) => t.toLowerCase() === tag.toLowerCase())
+    ).length;
+  };
+
+  // Filtered events for Dashboard
+  const filteredDashboardEvents = useMemo(() => {
     return events.filter((e) => {
       const matchesTag =
         selectedTagFilter === "All" ||
         e.tags?.some((t) => t.toLowerCase() === selectedTagFilter.toLowerCase());
 
       const matchesStatus =
-        selectedStatusFilter === "All" || e.status === selectedStatusFilter;
+        selectedStatusFilter === "All" ||
+        getEffectiveEventStatus(e) === selectedStatusFilter;
 
       const matchesSearch =
         searchQuery.trim() === "" ||
@@ -204,6 +234,28 @@ export default function Dashboard() {
       return matchesTag && matchesStatus && matchesSearch;
     });
   }, [events, selectedTagFilter, selectedStatusFilter, searchQuery]);
+
+  // Filtered events strictly for My Events
+  const filteredMyEvents = useMemo(() => {
+    return userCreatedEvents.filter((e) => {
+      const matchesTag =
+        selectedTagFilter === "All" ||
+        e.tags?.some((t) => t.toLowerCase() === selectedTagFilter.toLowerCase());
+
+      const matchesStatus =
+        selectedStatusFilter === "All" ||
+        getEffectiveEventStatus(e) === selectedStatusFilter;
+
+      const matchesSearch =
+        searchQuery.trim() === "" ||
+        e.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        e.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (e.location && e.location.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        e.tags?.some((t) => t.toLowerCase().includes(searchQuery.toLowerCase()));
+
+      return matchesTag && matchesStatus && matchesSearch;
+    });
+  }, [userCreatedEvents, selectedTagFilter, selectedStatusFilter, searchQuery]);
 
   return (
     <div className="min-h-screen bg-neutral-50 text-neutral-900">
@@ -227,14 +279,14 @@ export default function Dashboard() {
       {/* Top Navigation */}
       <Navbar
         user={user}
-        eventsCount={events.length}
+        eventsCount={userCreatedEvents.length}
         currentView={currentView}
         onViewChange={setCurrentView}
         onOpenMenu={() => setIsNavDrawerOpen(true)}
         onOpenCreateModal={openCreateModal}
-        onSwitchUser={handleSwitchUser}
         onLogout={handleLogout}
-        availableUsers={DEMO_USERS}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
       />
 
       {/* Navigation Drawer (via "=" button) */}
@@ -242,36 +294,34 @@ export default function Dashboard() {
         isOpen={isNavDrawerOpen}
         onClose={() => setIsNavDrawerOpen(false)}
         user={user}
-        eventsCount={events.length}
+        eventsCount={userCreatedEvents.length}
         currentView={currentView}
         onViewChange={setCurrentView}
         onOpenCreateModal={openCreateModal}
-        onSwitchUser={handleSwitchUser}
         onLogout={handleLogout}
-        availableUsers={DEMO_USERS}
       />
 
       {/* Main Views */}
       <main className="mx-auto max-w-7xl px-4 sm:px-6 py-8">
         {currentView === "my-events" ? (
           <MyEventsView
-            events={events}
-            filteredEvents={filteredEvents}
+            events={userCreatedEvents}
+            filteredEvents={filteredMyEvents}
             currentUser={user}
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
             selectedStatus={selectedStatusFilter}
             onStatusChange={setSelectedStatusFilter}
-            tags={allUniqueTags}
+            tags={myEventsUniqueTags}
             selectedTag={selectedTagFilter}
             onSelectTag={setSelectedTagFilter}
-            getTagCount={getTagCount}
+            getTagCount={getMyEventsTagCount}
             onBackToDashboard={() => setCurrentView("dashboard")}
             onOpenCreateModal={openCreateModal}
             onEditEvent={openEditModal}
             onDeleteEvent={handleDeleteEvent}
             onConfirmAttendance={(evt) => setConfirmModalEvent(evt)}
-            onViewAttendees={(evt) => setAttendeesModalEvent(evt)}
+            onViewDetails={(evt) => setDetailsModalEvent(evt)}
             onClearFilters={() => {
               setSearchQuery("");
               setSelectedTagFilter("All");
@@ -282,7 +332,7 @@ export default function Dashboard() {
           <DashboardOverview
             user={user}
             events={events}
-            filteredEvents={filteredEvents}
+            filteredEvents={filteredDashboardEvents}
             uniqueTags={allUniqueTags}
             selectedTag={selectedTagFilter}
             onSelectTag={setSelectedTagFilter}
@@ -292,7 +342,9 @@ export default function Dashboard() {
             onEditEvent={openEditModal}
             onDeleteEvent={handleDeleteEvent}
             onConfirmAttendance={(evt) => setConfirmModalEvent(evt)}
-            onViewAttendees={(evt) => setAttendeesModalEvent(evt)}
+            onViewDetails={(evt) => setDetailsModalEvent(evt)}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
           />
         )}
       </main>
@@ -307,6 +359,22 @@ export default function Dashboard() {
         onSubmit={handleCreateEvent}
         eventToEdit={editingEvent}
         onUpdate={handleUpdateEvent}
+      />
+
+      {/* Event Details Modal (includes full details & RSVP list) */}
+      <EventDetailsModal
+        isOpen={Boolean(detailsModalEvent)}
+        onClose={() => setDetailsModalEvent(null)}
+        event={detailsModalEvent}
+        currentUser={user}
+        onConfirmAttendance={(evt) => {
+          setDetailsModalEvent(null);
+          setConfirmModalEvent(evt);
+        }}
+        onEdit={(evt) => {
+          setDetailsModalEvent(null);
+          openEditModal(evt);
+        }}
       />
 
       {/* Attendance Confirmation Modal */}
@@ -329,13 +397,6 @@ export default function Dashboard() {
                 a.acknowledgedTime !== `${confirmModalEvent.date} ${confirmModalEvent.time}`
             )
         )}
-      />
-
-      {/* Attendees List Modal */}
-      <AttendeesModal
-        isOpen={Boolean(attendeesModalEvent)}
-        onClose={() => setAttendeesModalEvent(null)}
-        event={attendeesModalEvent}
       />
     </div>
   );

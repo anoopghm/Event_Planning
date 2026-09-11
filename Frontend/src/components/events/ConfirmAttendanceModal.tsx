@@ -1,14 +1,14 @@
 import Modal from "../ui/Modal";
 import Button from "../ui/Button";
+import { formatDateTime } from "../../utils/eventUtils";
 import type { EventItem, Attendee } from "../../types";
-
 
 interface ConfirmAttendanceModalProps {
   isOpen: boolean;
   onClose: () => void;
   event: EventItem | null;
   currentAttendee?: Attendee | null;
-  onConfirm: (decision: "yes" | "no") => void;
+  onConfirm: (decision: "yes" | "no" | "maybe") => void;
   timeHasChanged?: boolean;
 }
 
@@ -49,9 +49,8 @@ export default function ConfirmAttendanceModal({
                 </p>
                 <p className="mt-0.5 text-amber-800">
                   The organizer updated the schedule to{" "}
-                  <strong>{event.date} at {event.time}</strong>. Please
-                  acknowledge this new time and confirm whether you will still
-                  attend.
+                  <strong>{formatDateTime(event.date, event.time, event.endTime)}</strong>. Please
+                  acknowledge this new time and confirm your RSVP.
                 </p>
               </div>
             </div>
@@ -67,7 +66,7 @@ export default function ConfirmAttendanceModal({
             {event.title}
           </h3>
           <p className="mt-1 text-xs text-neutral-600">
-            🗓 <strong>{event.date}</strong> at <strong>{event.time}</strong>
+            🗓 <strong>{formatDateTime(event.date, event.time, event.endTime)}</strong>
           </p>
           {event.location && (
             <p className="text-xs text-neutral-500">📍 {event.location}</p>
@@ -87,16 +86,20 @@ export default function ConfirmAttendanceModal({
 
           {isEditing && (
             <p className="mt-1 text-xs text-neutral-500">
-              Current decision:{" "}
+              Current choice:{" "}
               <span
                 className={`font-semibold ${
                   currentAttendee?.status === "yes"
                     ? "text-emerald-600"
+                    : currentAttendee?.status === "maybe"
+                    ? "text-amber-600"
                     : "text-red-500"
                 }`}
               >
                 {currentAttendee?.status === "yes"
                   ? "✓ Attending (Yes)"
+                  : currentAttendee?.status === "maybe"
+                  ? "? Tentative (Maybe)"
                   : "✕ Not Attending (No)"}
               </span>
               . You can change your choice below.
@@ -104,24 +107,57 @@ export default function ConfirmAttendanceModal({
           )}
         </div>
 
-        {/* Action Buttons: Yes / No */}
-        <div className="grid grid-cols-2 gap-3 pt-2">
+        {/* Action Buttons: Yes / Maybe / No (3 options) */}
+        <div className="grid grid-cols-3 gap-2 sm:gap-3 pt-2">
+          {/* Option 1: Yes */}
           <button
             type="button"
             onClick={() => onConfirm("yes")}
-            className="flex flex-col items-center justify-center gap-1 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-emerald-800 transition hover:bg-emerald-100 hover:border-emerald-400 cursor-pointer"
+            className={`flex flex-col items-center justify-center gap-1 rounded-2xl border p-3 sm:py-3.5 transition cursor-pointer active:scale-95 ${
+              currentAttendee?.status === "yes"
+                ? "border-emerald-500 bg-emerald-100/70 text-emerald-900 ring-2 ring-emerald-500/20 shadow-xs"
+                : "border-emerald-300 bg-emerald-50/70 text-emerald-800 hover:bg-emerald-100 hover:border-emerald-400"
+            }`}
           >
-            <span className="text-lg">✓</span>
-            <span className="text-sm font-bold">Yes, I will attend</span>
+            <span className="text-xl">✓</span>
+            <span className="text-sm font-bold">Yes</span>
+            <span className="text-[10px] text-emerald-700 hidden sm:inline">
+              Attending
+            </span>
           </button>
 
+          {/* Option 2: Maybe */}
+          <button
+            type="button"
+            onClick={() => onConfirm("maybe")}
+            className={`flex flex-col items-center justify-center gap-1 rounded-2xl border p-3 sm:py-3.5 transition cursor-pointer active:scale-95 ${
+              currentAttendee?.status === "maybe"
+                ? "border-amber-500 bg-amber-100/70 text-amber-900 ring-2 ring-amber-500/20 shadow-xs"
+                : "border-amber-300 bg-amber-50/70 text-amber-800 hover:bg-amber-100 hover:border-amber-400"
+            }`}
+          >
+            <span className="text-xl">?</span>
+            <span className="text-sm font-bold">Maybe</span>
+            <span className="text-[10px] text-amber-700 hidden sm:inline">
+              Tentative
+            </span>
+          </button>
+
+          {/* Option 3: No */}
           <button
             type="button"
             onClick={() => onConfirm("no")}
-            className="flex flex-col items-center justify-center gap-1 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-800 transition hover:bg-red-100 hover:border-red-300 cursor-pointer"
+            className={`flex flex-col items-center justify-center gap-1 rounded-2xl border p-3 sm:py-3.5 transition cursor-pointer active:scale-95 ${
+              currentAttendee?.status === "no"
+                ? "border-red-500 bg-red-100/70 text-red-900 ring-2 ring-red-500/20 shadow-xs"
+                : "border-red-200 bg-red-50/70 text-red-800 hover:bg-red-100 hover:border-red-300"
+            }`}
           >
-            <span className="text-lg">✕</span>
-            <span className="text-sm font-bold">No, I can't make it</span>
+            <span className="text-xl">✕</span>
+            <span className="text-sm font-bold">No</span>
+            <span className="text-[10px] text-red-700 hidden sm:inline">
+              Can't make it
+            </span>
           </button>
         </div>
 

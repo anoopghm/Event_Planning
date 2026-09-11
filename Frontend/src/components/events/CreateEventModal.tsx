@@ -1,9 +1,9 @@
 import { useState } from "react";
 import Modal from "../ui/Modal";
 import Button from "../ui/Button";
-import { PRESET_TAGS, STATUS_OPTIONS } from "../../constants/mockData";
+import { PRESET_TAGS } from "../../constants/mockData";
+import { computeEventStatus, getStatusBadge } from "../../utils/eventUtils";
 import type { EventItem, Attendee } from "../../types";
-
 
 export type { EventItem, Attendee };
 
@@ -34,13 +34,14 @@ function EventFormContent({
   const [description, setDescription] = useState(eventToEdit?.description || "");
   const [date, setDate] = useState(eventToEdit?.date || "");
   const [time, setTime] = useState(eventToEdit?.time || "");
+  const [endTime, setEndTime] = useState(eventToEdit?.endTime || "");
   const [location, setLocation] = useState(eventToEdit?.location || "");
-  const [status, setStatus] = useState<"Confirmed" | "Planning in Progress" | "Upcoming">(
-    eventToEdit?.status || "Upcoming"
-  );
   const [selectedTags, setSelectedTags] = useState<string[]>(eventToEdit?.tags || []);
+  const [imageUrl, setImageUrl] = useState(eventToEdit?.imageUrl || "");
   const [customTagInput, setCustomTagInput] = useState("");
   const [error, setError] = useState("");
+
+  const liveComputedStatus = date && time ? computeEventStatus(date, time, endTime) : "Upcoming";
 
   const toggleTag = (tag: string) => {
     setSelectedTags((prev) =>
@@ -72,6 +73,24 @@ function EventFormContent({
     setSelectedTags((prev) => prev.filter((t) => t !== tagToRemove));
   };
 
+  const handleFromTimeChange = (newFrom: string) => {
+    setTime(newFrom);
+    if (error) setError("");
+
+    // Auto-suggest To (end) time 1 hour later if empty or earlier
+    if (newFrom && !endTime) {
+      try {
+        const [h, m] = newFrom.split(":").map(Number);
+        const endH = (h + 1) % 24;
+        setEndTime(
+          `${String(endH).padStart(2, "0")}:${String(m).padStart(2, "0")}`
+        );
+      } catch {
+        // ignore
+      }
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -86,14 +105,46 @@ function EventFormContent({
     }
 
     if (!time) {
-      setError("Please select a start time for the event.");
+      setError("Please enter a From (start) time for the event.");
       return;
     }
+
+    if (!endTime) {
+      setError("Please enter a To (end) time for the event.");
+      return;
+    }
+
+    if (time && endTime && endTime <= time) {
+      setError("To (end) time must be later than From (start) time.");
+      return;
+    }
+
+    const getAutoImageForTags = (tags: string[]) => {
+      const lower = tags.map((t) => t.toLowerCase()).join(" ");
+      if (lower.includes("birth"))
+        return "https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=800&auto=format&fit=crop&q=80";
+      if (lower.includes("conf") || lower.includes("tech"))
+        return "https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=800&auto=format&fit=crop&q=80";
+      if (lower.includes("meet") || lower.includes("trek") || lower.includes("hike"))
+        return "https://images.unsplash.com/photo-1544735716-392fe2489ffa?w=800&auto=format&fit=crop&q=80";
+      if (lower.includes("work"))
+        return "https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=800&auto=format&fit=crop&q=80";
+      if (lower.includes("party") || lower.includes("gala"))
+        return "https://images.unsplash.com/photo-1519671482749-fd09be7ccebf?w=800&auto=format&fit=crop&q=80";
+      return "https://images.unsplash.com/photo-1505373877841-8d25f7d46678?w=800&auto=format&fit=crop&q=80";
+    };
+
+    const finalImageUrl =
+      imageUrl.trim() || eventToEdit?.imageUrl || getAutoImageForTags(selectedTags);
+
+    const computedStatus = computeEventStatus(date, time, endTime);
 
     if (isEditMode && eventToEdit) {
       if (onUpdate) {
         const timeChanged =
-          eventToEdit.date !== date || eventToEdit.time !== time;
+          eventToEdit.date !== date ||
+          eventToEdit.time !== time ||
+          eventToEdit.endTime !== endTime;
 
         onUpdate({
           id: eventToEdit.id,
@@ -101,9 +152,11 @@ function EventFormContent({
           description: description.trim(),
           date,
           time,
+          endTime,
           location: location.trim() || undefined,
           tags: selectedTags,
-          status,
+          status: computedStatus,
+          imageUrl: finalImageUrl,
           creatorId: eventToEdit.creatorId,
           creatorName: eventToEdit.creatorName,
           creatorEmail: eventToEdit.creatorEmail,
@@ -119,9 +172,11 @@ function EventFormContent({
         description: description.trim(),
         date,
         time,
+        endTime,
         location: location.trim() || undefined,
         tags: selectedTags,
-        status,
+        status: computedStatus,
+        imageUrl: finalImageUrl,
         attendees: [],
       });
     }
@@ -132,7 +187,7 @@ function EventFormContent({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600">
+        <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs sm:text-sm text-red-600 font-medium animate-in fade-in">
           {error}
         </div>
       )}
@@ -141,7 +196,7 @@ function EventFormContent({
       <div>
         <label
           htmlFor="event-title"
-          className="block text-sm font-medium text-neutral-800"
+          className="block text-xs sm:text-sm font-semibold text-neutral-800"
         >
           Event Title <span className="text-red-500">*</span>
         </label>
@@ -154,35 +209,33 @@ function EventFormContent({
             setTitle(e.target.value);
             if (error) setError("");
           }}
-          placeholder="e.g. John's 30th Birthday, Global Tech Conference"
+          placeholder="e.g. Q3 Sprint Planning, Tech Conference 2026"
           className="mt-1.5 w-full rounded-xl border border-neutral-300 bg-white px-3.5 py-2.5 text-sm outline-none transition placeholder:text-neutral-400 focus:border-red-500 focus:ring-4 focus:ring-red-500/10"
         />
       </div>
 
-      {/* Description */}
-      <div>
-        <label
-          htmlFor="event-description"
-          className="block text-sm font-medium text-neutral-800"
-        >
-          Description
-        </label>
-        <textarea
-          id="event-description"
-          rows={3}
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="Brief details about the event, agenda, venue details, or notes..."
-          className="mt-1.5 w-full rounded-xl border border-neutral-300 bg-white px-3.5 py-2.5 text-sm outline-none transition placeholder:text-neutral-400 focus:border-red-500 focus:ring-4 focus:ring-red-500/10 resize-none"
-        />
-      </div>
+      {/* Meeting Date & Timings (From and To) */}
+      <div className="rounded-2xl border border-neutral-200 bg-neutral-50/70 p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-bold text-neutral-700 uppercase tracking-wider">
+            Meeting Schedule & Timings
+          </span>
+          {date && time && (
+            <span
+              className={`inline-flex items-center rounded-xl px-2.5 py-0.5 text-xs font-bold ${getStatusBadge(
+                liveComputedStatus
+              )}`}
+            >
+              {liveComputedStatus}
+            </span>
+          )}
+        </div>
 
-      {/* Date & Time Grid */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {/* Meeting Date */}
         <div>
           <label
             htmlFor="event-date"
-            className="block text-sm font-medium text-neutral-800"
+            className="block text-xs font-medium text-neutral-700 mb-1"
           >
             Date <span className="text-red-500">*</span>
           </label>
@@ -195,80 +248,116 @@ function EventFormContent({
               setDate(e.target.value);
               if (error) setError("");
             }}
-            className="mt-1.5 w-full rounded-xl border border-neutral-300 bg-white px-3.5 py-2.5 text-sm outline-none transition placeholder:text-neutral-400 focus:border-red-500 focus:ring-4 focus:ring-red-500/10"
+            className="w-full rounded-xl border border-neutral-300 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-red-500 focus:ring-4 focus:ring-red-500/10"
           />
         </div>
 
-        <div>
-          <label
-            htmlFor="event-time"
-            className="block text-sm font-medium text-neutral-800"
-          >
-            Time <span className="text-red-500">*</span>
-          </label>
-          <input
-            id="event-time"
-            type="time"
-            required
-            value={time}
-            onChange={(e) => {
-              setTime(e.target.value);
-              if (error) setError("");
-            }}
-            className="mt-1.5 w-full rounded-xl border border-neutral-300 bg-white px-3.5 py-2.5 text-sm outline-none transition placeholder:text-neutral-400 focus:border-red-500 focus:ring-4 focus:ring-red-500/10"
-          />
+        {/* From (Start Time) and To (End Time) */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label
+              htmlFor="event-from-time"
+              className="block text-xs font-medium text-neutral-700 mb-1"
+            >
+              From (Start Time) <span className="text-red-500">*</span>
+            </label>
+            <input
+              id="event-from-time"
+              type="time"
+              required
+              value={time}
+              onChange={(e) => handleFromTimeChange(e.target.value)}
+              className="w-full rounded-xl border border-neutral-300 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-red-500 focus:ring-4 focus:ring-red-500/10"
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="event-to-time"
+              className="block text-xs font-medium text-neutral-700 mb-1"
+            >
+              To (End Time) <span className="text-red-500">*</span>
+            </label>
+            <input
+              id="event-to-time"
+              type="time"
+              required
+              value={endTime}
+              onChange={(e) => {
+                setEndTime(e.target.value);
+                if (error) setError("");
+              }}
+              className="w-full rounded-xl border border-neutral-300 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-red-500 focus:ring-4 focus:ring-red-500/10"
+            />
+          </div>
         </div>
+
+        <p className="text-[11px] text-neutral-400">
+          Status (Upcoming, Ongoing, or Finished) is calculated automatically based on these timings.
+        </p>
+      </div>
+
+      {/* Description */}
+      <div>
+        <label
+          htmlFor="event-description"
+          className="block text-xs sm:text-sm font-semibold text-neutral-800"
+        >
+          Description
+        </label>
+        <textarea
+          id="event-description"
+          rows={3}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Brief details about the meeting agenda, venue instructions, or notes..."
+          className="mt-1.5 w-full rounded-xl border border-neutral-300 bg-white px-3.5 py-2.5 text-sm outline-none transition placeholder:text-neutral-400 focus:border-red-500 focus:ring-4 focus:ring-red-500/10 resize-none"
+        />
       </div>
 
       {/* Location (Optional) */}
       <div>
         <label
           htmlFor="event-location"
-          className="block text-sm font-medium text-neutral-800"
+          className="block text-xs sm:text-sm font-semibold text-neutral-800"
         >
-          Location / Venue <span className="text-xs text-neutral-400">(Optional)</span>
+          Location / Venue <span className="text-xs font-normal text-neutral-400">(Optional)</span>
         </label>
         <input
           id="event-location"
           type="text"
           value={location}
           onChange={(e) => setLocation(e.target.value)}
-          placeholder="e.g. Grand Horizon Ballroom, Convention Hall, or Online"
+          placeholder="e.g. Conference Room 3B, Online (Google Meet / Zoom)"
           className="mt-1.5 w-full rounded-xl border border-neutral-300 bg-white px-3.5 py-2.5 text-sm outline-none transition placeholder:text-neutral-400 focus:border-red-500 focus:ring-4 focus:ring-red-500/10"
         />
       </div>
 
-      {/* Status selector (when editing) */}
+      {/* Image URL (Optional) */}
       <div>
         <label
-          htmlFor="event-status"
-          className="block text-sm font-medium text-neutral-800"
+          htmlFor="event-image-url"
+          className="block text-xs sm:text-sm font-semibold text-neutral-800"
         >
-          Status
+          Image URL <span className="text-xs font-normal text-neutral-400">(Optional - auto-assigned if empty)</span>
         </label>
-        <select
-          id="event-status"
-          value={status}
-          onChange={(e) =>
-            setStatus(e.target.value as "Confirmed" | "Planning in Progress" | "Upcoming")
-          }
-          className="mt-1.5 w-full rounded-xl border border-neutral-300 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-red-500 focus:ring-4 focus:ring-red-500/10"
-        >
-          {STATUS_OPTIONS.map((opt) => (
-            <option key={opt} value={opt}>
-              {opt}
-            </option>
-          ))}
-        </select>
+        <input
+          id="event-image-url"
+          type="url"
+          value={imageUrl}
+          onChange={(e) => setImageUrl(e.target.value)}
+          placeholder="e.g. https://images.unsplash.com/photo-..."
+          className="mt-1.5 w-full rounded-xl border border-neutral-300 bg-white px-3.5 py-2.5 text-sm outline-none transition placeholder:text-neutral-400 focus:border-red-500 focus:ring-4 focus:ring-red-500/10"
+        />
       </div>
 
       {/* Tags */}
       <div className="pt-1">
-        <label className="block text-sm font-medium text-neutral-800">
+        <label className="block text-xs sm:text-sm font-semibold text-neutral-800">
           Tags / Categories
         </label>
         <p className="mt-0.5 text-xs text-neutral-500">
-          Select tags like Birthday, Conference, or type custom tags.
+          Select presets or enter custom tags for quick filtering.
         </p>
 
         {/* Quick presets */}
@@ -280,7 +369,7 @@ function EventFormContent({
                 type="button"
                 key={tag}
                 onClick={() => toggleTag(tag)}
-                className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium transition cursor-pointer ${
+                className={`inline-flex items-center gap-1 rounded-xl px-2.5 py-1 text-xs font-medium transition cursor-pointer ${
                   isSelected
                     ? "bg-red-500 text-white shadow-xs"
                     : "border border-neutral-200 bg-neutral-50 text-neutral-700 hover:border-neutral-300 hover:bg-neutral-100"
@@ -300,7 +389,7 @@ function EventFormContent({
             value={customTagInput}
             onChange={(e) => setCustomTagInput(e.target.value)}
             onKeyDown={handleCustomTagKeyDown}
-            placeholder="Add custom tag (e.g. Festival)..."
+            placeholder="Add custom tag (e.g. Sprint, Sync)..."
             className="flex-1 rounded-xl border border-neutral-300 bg-white px-3.5 py-2 text-xs outline-none transition placeholder:text-neutral-400 focus:border-red-500 focus:ring-3 focus:ring-red-500/10"
           />
           <button
@@ -341,7 +430,7 @@ function EventFormContent({
       {/* Buttons */}
       <div className="mt-6 flex items-center justify-end gap-3 pt-3 border-t border-neutral-100">
         <Button variant="secondary" onClick={onClose}>
-          Cancel
+          {isEditMode ? "Cancel" : "← Back to Dashboard"}
         </Button>
         <Button type="submit" variant="primary">
           {isEditMode ? "Save Changes" : "Create Event"}
