@@ -8,6 +8,7 @@ import rateLimit from "express-rate-limit";
 import authRouter from "./routes/auth";
 import eventsRouter from "./routes/events";
 import { errorHandler, notFound } from "./middleware/errors";
+import { cookieParserMiddleware } from "./middleware/cookies";
 
 const app = express();
 const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:5173")
@@ -16,8 +17,10 @@ const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:5173")
   .filter(Boolean);
 
 app.use(helmet());
-app.use(cors({ origin: allowedOrigins }));
+app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json({ limit: "16kb" }));
+app.use(cookieParserMiddleware);
+
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,

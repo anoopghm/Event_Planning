@@ -1,14 +1,14 @@
 import { Navigate } from "react-router-dom";
-import { getAccessToken } from "../../utils/apiClient";
+import { isAuthenticated } from "../../utils/apiClient";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
 }
 
 function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const token = getAccessToken();
+  const loggedIn = isAuthenticated();
 
-  if (!token) {
+  if (!loggedIn) {
     return <Navigate to="/login" replace />;
   }
 

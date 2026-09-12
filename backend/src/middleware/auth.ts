@@ -9,9 +9,19 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
-export function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+export function extractAccessToken(req: Request): string | undefined {
+  if (req.cookies?.accessToken) {
+    return req.cookies.accessToken;
+  }
   const authorization = req.header("authorization");
-  const token = authorization?.startsWith("Bearer ") ? authorization.slice(7) : undefined;
+  if (authorization?.startsWith("Bearer ")) {
+    return authorization.slice(7);
+  }
+  return undefined;
+}
+
+export function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  const token = extractAccessToken(req);
 
   if (!token) {
     return res.status(401).json({
@@ -44,8 +54,7 @@ export function requireAuth(req: AuthenticatedRequest, res: Response, next: Next
 }
 
 export function optionalAuth(req: AuthenticatedRequest, _res: Response, next: NextFunction) {
-  const authorization = req.header("authorization");
-  const token = authorization?.startsWith("Bearer ") ? authorization.slice(7) : undefined;
+  const token = extractAccessToken(req);
 
   if (!token) {
     return next();

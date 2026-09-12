@@ -1,14 +1,14 @@
 import { Navigate } from "react-router-dom";
-import { getAccessToken } from "../../utils/apiClient";
+import { isAuthenticated } from "../../utils/apiClient";
 
 interface PublicOnlyRouteProps {
   children: React.ReactNode;
 }
 
 function PublicOnlyRoute({ children }: PublicOnlyRouteProps) {
-  const token = getAccessToken();
+  const loggedIn = isAuthenticated();
 
-  if (token) {
+  if (loggedIn) {
     return <Navigate to="/" replace />;
   }
 

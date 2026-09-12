@@ -67,28 +67,26 @@ router.post(
 
 router.post(
   "/refresh",
-  [
-    body("refreshToken")
-      .trim()
-      .notEmpty()
-      .withMessage("Refresh token is required.")
-  ],
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
+      const hasCookie = Boolean(req.cookies?.refreshToken);
+      const hasBody = Boolean(req.body?.refreshToken && typeof req.body.refreshToken === "string" && req.body.refreshToken.trim());
+      const hasHeader = Boolean(req.header("x-refresh-token"));
+
+      if (!hasCookie && !hasBody && !hasHeader) {
         return res.status(400).json({
-          message: errors.array()[0].msg,
-          code: "REFRESH_TOKEN_REQUIRED",
-          errors: errors.array()
+          message: "Refresh token is required.",
+          code: "REFRESH_TOKEN_REQUIRED"
         });
       }
+
       return await refresh(req, res, next);
     } catch (err) {
       return next(err);
     }
   }
 );
+
 
 router.post("/logout", optionalAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
