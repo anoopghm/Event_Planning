@@ -5,7 +5,8 @@ import eventImage from "../../assets/event.png";
 
 import Button from "../ui/Button";
 import Input from "../ui/Input";
-import { setTokens } from "../../utils/apiClient";
+import { setAuthUser } from "../../utils/apiClient";
+
 
 
 interface AuthFormProps {
@@ -103,6 +104,7 @@ function AuthForm({ type }: AuthFormProps) {
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(payload),
       });
 
@@ -117,8 +119,9 @@ function AuthForm({ type }: AuthFormProps) {
       }
 
       if (isLogin) {
-        setTokens(data.accessToken || data.token, data.refreshToken, data.user);
+        setAuthUser(data.user);
         setSuccess("Signed in successfully! Redirecting...");
+
 
         setTimeout(() => {
           navigate("/");

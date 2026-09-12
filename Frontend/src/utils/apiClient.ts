@@ -1,46 +1,53 @@
 /**
- * API client with automatic JWT token management, Authorization headers,
- * and silent token refresh rotation handling.
+ * API client with secure httpOnly cookie authentication, automatic token refresh,
+ * and request retries.
  */
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
-export function getAccessToken(): string | null {
-  return localStorage.getItem("accessToken") || localStorage.getItem("authToken");
-}
-
-export function getRefreshToken(): string | null {
-  return localStorage.getItem("refreshToken");
-}
-
-export function setTokens(accessToken: string, refreshToken?: string, user?: unknown) {
-  localStorage.setItem("accessToken", accessToken);
-  localStorage.setItem("authToken", accessToken); // Backwards compatibility
-  if (refreshToken) {
-    localStorage.setItem("refreshToken", refreshToken);
+export function getAuthUser(): { id: number; name: string; email: string } | null {
+  const raw = localStorage.getItem("authUser");
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
   }
+}
+
+export function isAuthenticated(): boolean {
+  return Boolean(localStorage.getItem("authUser"));
+}
+
+export function setAuthUser(user: unknown) {
   if (user) {
     localStorage.setItem("authUser", JSON.stringify(user));
   }
 }
 
-export function clearTokens() {
+export function clearAuth() {
+  localStorage.removeItem("authUser");
+  // Clean up any legacy localStorage tokens
   localStorage.removeItem("accessToken");
   localStorage.removeItem("authToken");
   localStorage.removeItem("refreshToken");
-  localStorage.removeItem("authUser");
 }
 
-// Track ongoing refresh promise to prevent concurrent refreshes
-let refreshPromise: Promise<string | null> | null = null;
-
-export async function refreshAccessToken(): Promise<string | null> {
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) {
-    clearTokens();
-    return null;
+// Backwards-compatible token setter
+export function setTokens(_accessToken?: string, _refreshToken?: string, user?: unknown) {
+  if (user) {
+    setAuthUser(user);
   }
+}
 
+export function clearTokens() {
+  clearAuth();
+}
+
+// Track ongoing refresh promise to prevent concurrent refresh requests
+let refreshPromise: Promise<boolean> | null = null;
+
+export async function refreshAccessToken(): Promise<boolean> {
   // If a refresh is already in flight, reuse it
   if (refreshPromise) {
     return refreshPromise;
@@ -48,28 +55,26 @@ export async function refreshAccessToken(): Promise<string | null> {
 
   refreshPromise = (async () => {
     try {
+      // The browser automatically attaches the httpOnly refreshToken cookie via credentials: "include"
       const response = await fetch(`${API_BASE}/api/auth/refresh`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refreshToken })
+        credentials: "include"
       });
 
       if (!response.ok) {
-        clearTokens();
-        return null;
+        clearAuth();
+        return false;
       }
 
       const data = await response.json();
-      if (data.accessToken) {
-        setTokens(data.accessToken, data.refreshToken, data.user);
-        return data.accessToken;
+      if (data.user) {
+        setAuthUser(data.user);
       }
-
-      clearTokens();
-      return null;
+      return true;
     } catch {
-      clearTokens();
-      return null;
+      clearAuth();
+      return false;
     } finally {
       refreshPromise = null;
     }
@@ -79,37 +84,25 @@ export async function refreshAccessToken(): Promise<string | null> {
 }
 
 /**
- * Fetch wrapper that automatically includes the access token and retries once
- * after refreshing the token if a 401 / TOKEN_EXPIRED is encountered.
+ * Fetch wrapper that sends httpOnly cookies via credentials: "include"
+ * and automatically retries after refreshing tokens if a 401 / TOKEN_EXPIRED occurs.
  */
 export async function fetchWithAuth(
   input: string | URL | Request,
   init: RequestInit = {}
 ): Promise<Response> {
-  let token = getAccessToken();
-
-  const headers = new Headers(init.headers || {});
-  if (token && !headers.has("Authorization")) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
-
   const updatedInit: RequestInit = {
     ...init,
-    headers
+    credentials: "include"
   };
 
   let response = await fetch(input, updatedInit);
 
-  // If 401 Unauthorized, attempt a silent token refresh and retry
+  // If 401 Unauthorized, attempt a silent token refresh via httpOnly cookies and retry
   if (response.status === 401) {
-    const newToken = await refreshAccessToken();
-    if (newToken) {
-      const retryHeaders = new Headers(init.headers || {});
-      retryHeaders.set("Authorization", `Bearer ${newToken}`);
-      response = await fetch(input, {
-        ...init,
-        headers: retryHeaders
-      });
+    const refreshed = await refreshAccessToken();
+    if (refreshed) {
+      response = await fetch(input, updatedInit);
     }
   }
 
@@ -117,22 +110,18 @@ export async function fetchWithAuth(
 }
 
 /**
- * Log out user by notifying the server to revoke the refresh token, then clearing local tokens.
+ * Log out user by calling backend to clear httpOnly cookies and revoke tokens in MySQL
  */
 export async function logoutUser(): Promise<void> {
-  const refreshToken = getRefreshToken();
   try {
-    if (refreshToken) {
-      await fetch(`${API_BASE}/api/auth/logout`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refreshToken })
-      });
-    }
+    await fetch(`${API_BASE}/api/auth/logout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include"
+    });
   } catch (err) {
     console.error("Logout request failed:", err);
   } finally {
-    clearTokens();
+    clearAuth();
   }
 }
-

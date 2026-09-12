@@ -7,7 +7,10 @@ import {
   generateRefreshToken,
   storeRefreshToken,
   rotateRefreshToken,
-  revokeRefreshToken
+  revokeRefreshToken,
+  getAccessTokenCookieOptions,
+  getRefreshTokenCookieOptions,
+  getClearCookieOptions
 } from "../utils/jwt";
 
 interface UserRow extends RowDataPacket {
@@ -76,6 +79,10 @@ export async function login(req: Request, res: Response, next?: NextFunction) {
     // Store hashed refresh token in database
     await storeRefreshToken(user.id, refreshToken);
 
+    // Set secure httpOnly cookies
+    res.cookie("accessToken", accessToken, getAccessTokenCookieOptions());
+    res.cookie("refreshToken", refreshToken, getRefreshTokenCookieOptions());
+
     return res.json({
       ok: true,
       message: "Login successful",
@@ -92,7 +99,11 @@ export async function login(req: Request, res: Response, next?: NextFunction) {
 }
 
 export async function refresh(req: Request, res: Response, next?: NextFunction) {
-  const refreshToken = req.body?.refreshToken || req.header("x-refresh-token");
+  // Extract refresh token from httpOnly cookie, request body, or header
+  const refreshToken =
+    req.cookies?.refreshToken ||
+    req.body?.refreshToken ||
+    req.header("x-refresh-token");
 
   if (!refreshToken || typeof refreshToken !== "string") {
     return res.status(400).json({
@@ -104,6 +115,10 @@ export async function refresh(req: Request, res: Response, next?: NextFunction) 
   try {
     const result = await rotateRefreshToken(refreshToken.trim());
 
+    // Update secure httpOnly cookies with new tokens
+    res.cookie("accessToken", result.accessToken, getAccessTokenCookieOptions());
+    res.cookie("refreshToken", result.refreshToken, getRefreshTokenCookieOptions());
+
     return res.json({
       ok: true,
       accessToken: result.accessToken,
@@ -112,6 +127,10 @@ export async function refresh(req: Request, res: Response, next?: NextFunction) 
       user: result.user
     });
   } catch (err: any) {
+    // If refresh token is expired, invalid, or reused, clear stale cookies
+    res.clearCookie("accessToken", getClearCookieOptions());
+    res.clearCookie("refreshToken", getClearCookieOptions());
+
     if (
       err.code === "REFRESH_TOKEN_EXPIRED" ||
       err.code === "INVALID_REFRESH_TOKEN" ||
@@ -132,12 +151,19 @@ export async function refresh(req: Request, res: Response, next?: NextFunction) 
 }
 
 export async function logout(req: Request, res: Response, next?: NextFunction) {
-  const refreshToken = req.body?.refreshToken || req.header("x-refresh-token");
+  const refreshToken =
+    req.cookies?.refreshToken ||
+    req.body?.refreshToken ||
+    req.header("x-refresh-token");
 
   try {
     if (refreshToken && typeof refreshToken === "string") {
       await revokeRefreshToken(refreshToken.trim());
     }
+
+    // Clear secure httpOnly cookies
+    res.clearCookie("accessToken", getClearCookieOptions());
+    res.clearCookie("refreshToken", getClearCookieOptions());
 
     return res.json({
       ok: true,

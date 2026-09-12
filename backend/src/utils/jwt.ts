@@ -1,6 +1,8 @@
 import crypto from "crypto";
 import jwt, { JwtPayload, SignOptions } from "jsonwebtoken";
+import { CookieOptions } from "express";
 import { RowDataPacket, ResultSetHeader } from "mysql2";
+
 import pool from "../models/db";
 
 export interface TokenUser {
@@ -290,4 +292,46 @@ export async function rotateRefreshToken(oldRawToken: string): Promise<{
     }
   };
 }
+
+/**
+ * Standard cookie options for the short-lived access token
+ */
+export function getAccessTokenCookieOptions(): CookieOptions {
+  const isProd = process.env.NODE_ENV === "production";
+  return {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: "lax",
+    path: "/",
+    maxAge: parseDurationToMs(getAccessExpiresIn())
+  };
+}
+
+/**
+ * Standard cookie options for the long-lived refresh token
+ */
+export function getRefreshTokenCookieOptions(): CookieOptions {
+  const isProd = process.env.NODE_ENV === "production";
+  return {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: "lax",
+    path: "/",
+    maxAge: parseDurationToMs(getRefreshExpiresIn())
+  };
+}
+
+/**
+ * Cookie options for clearing cookies upon logout
+ */
+export function getClearCookieOptions(): CookieOptions {
+  const isProd = process.env.NODE_ENV === "production";
+  return {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: "lax",
+    path: "/"
+  };
+}
+
 
