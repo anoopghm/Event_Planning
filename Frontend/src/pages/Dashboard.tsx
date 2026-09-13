@@ -220,16 +220,17 @@ export default function Dashboard() {
 
   // Filtered events for Dashboard
   const filteredDashboardEvents = useMemo(() => {
+    const isSearchActive = searchQuery.trim().length >= 3;
     const matched = events.filter((e) => {
       // 1. Tag filter
       const matchesTag =
         selectedTagFilter === "All" ||
         e.tags?.some((t) => t.toLowerCase() === selectedTagFilter.toLowerCase());
 
-      // 2. Status filter (Search includes all Upcoming, Ongoing, and Past events)
+      // 2. Status filter (Active search includes all Upcoming, Ongoing, and Past events)
       const st = getEffectiveEventStatus(e);
       const matchesStatus =
-        searchQuery.trim() !== "" ||
+        isSearchActive ||
         selectedStatusFilter === "All" ||
         (selectedStatusFilter === "Past" || selectedStatusFilter === "Finished"
           ? st === "Past" || (st as string) === "Finished"
@@ -240,13 +241,13 @@ export default function Dashboard() {
         selectedEventTypeFilter === "All" ||
         (e.eventType || "Public") === selectedEventTypeFilter;
 
-      // 4. Levenshtein Search (title, location, description, tags)
+      // 4. Levenshtein Search (title, location, description, tags - requires >= 3 letters)
       const matchesSearch = matchEventByLevenshtein(e, searchQuery);
 
       return matchesTag && matchesStatus && matchesEventType && matchesSearch;
     });
 
-    if (searchQuery.trim()) {
+    if (isSearchActive) {
       return matched.sort(
         (a, b) =>
           getEventLevenshteinScore(b, searchQuery) -
@@ -259,16 +260,17 @@ export default function Dashboard() {
 
   // Filtered events strictly for My Events
   const filteredMyEvents = useMemo(() => {
+    const isSearchActive = searchQuery.trim().length >= 3;
     const matched = userCreatedEvents.filter((e) => {
       // 1. Tag filter
       const matchesTag =
         selectedTagFilter === "All" ||
         e.tags?.some((t) => t.toLowerCase() === selectedTagFilter.toLowerCase());
 
-      // 2. Status filter (Search includes all Upcoming, Ongoing, and Past events)
+      // 2. Status filter (Active search includes all Upcoming, Ongoing, and Past events)
       const st = getEffectiveEventStatus(e);
       const matchesStatus =
-        searchQuery.trim() !== "" ||
+        isSearchActive ||
         selectedStatusFilter === "All" ||
         (selectedStatusFilter === "Past" || selectedStatusFilter === "Finished"
           ? st === "Past" || (st as string) === "Finished"
@@ -279,13 +281,13 @@ export default function Dashboard() {
         selectedEventTypeFilter === "All" ||
         (e.eventType || "Public") === selectedEventTypeFilter;
 
-      // 4. Levenshtein Search (title, location, description, tags)
+      // 4. Levenshtein Search (title, location, description, tags - requires >= 3 letters)
       const matchesSearch = matchEventByLevenshtein(e, searchQuery);
 
       return matchesTag && matchesStatus && matchesEventType && matchesSearch;
     });
 
-    if (searchQuery.trim()) {
+    if (isSearchActive) {
       return matched.sort(
         (a, b) =>
           getEventLevenshteinScore(b, searchQuery) -
@@ -341,7 +343,7 @@ export default function Dashboard() {
       />
 
       {/* Main Views */}
-      <main className="mx-auto max-w-7xl px-4 sm:px-6 py-8">
+      <main className="mx-auto max-w-7xl px-3 sm:px-6 py-4 sm:py-8">
         {currentView === "my-events" ? (
           <MyEventsView
             events={userCreatedEvents}

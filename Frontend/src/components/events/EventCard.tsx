@@ -1,4 +1,17 @@
 import {
+  Calendar,
+  MapPin,
+  Users,
+  Eye,
+  Pencil,
+  Trash2,
+  Lock,
+  Globe,
+  CheckCircle2,
+  CalendarCheck,
+  AlertCircle,
+} from "lucide-react";
+import {
   formatDateTime,
   getTagStyle,
   getEffectiveEventStatus,
@@ -54,13 +67,13 @@ export default function EventCard({
   // Design row layout (matches dashboard list)
   if (variant === "row") {
     return (
-      <div className="group flex flex-col gap-4 rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5 shadow-xs transition hover:border-neutral-300 hover:shadow-md lg:flex-row lg:items-center lg:justify-between">
+      <div className="group flex flex-col gap-4 rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-2xs transition-all duration-200 hover:border-slate-300 hover:shadow-md lg:flex-row lg:items-center lg:justify-between">
         {/* Left Section: Thumbnail + Info */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center flex-1 min-w-0">
           {/* Thumbnail */}
           <div
             onClick={() => onViewDetails(event)}
-            className="relative h-32 sm:h-28 w-full shrink-0 cursor-pointer overflow-hidden rounded-xl border border-neutral-100 sm:w-48 md:w-52"
+            className="relative h-32 sm:h-28 w-full shrink-0 cursor-pointer overflow-hidden rounded-xl border border-slate-100 sm:w-48 md:w-52 bg-slate-100"
           >
             <img
               src={event.imageUrl || fallbackImage}
@@ -70,17 +83,6 @@ export default function EventCard({
                 (e.target as HTMLImageElement).src = fallbackImage;
               }}
             />
-            {/* Status Badge floating on thumbnail for mobile screens */}
-            <div className="absolute top-2.5 right-2.5 lg:hidden">
-              <span
-                className={`inline-flex items-center gap-1 rounded-xl px-2.5 py-1 text-xs font-semibold shadow-xs ${getStatusBadge(
-                  status
-                )}`}
-              >
-                <span className={`h-1.5 w-1.5 rounded-full ${status === "Ongoing" ? "bg-emerald-500 animate-pulse" : status === "Upcoming" ? "bg-indigo-500" : "bg-neutral-400"}`} />
-                {getStatusText(status)}
-              </span>
-            </div>
           </div>
 
           {/* Details */}
@@ -88,102 +90,72 @@ export default function EventCard({
             <div className="flex items-center gap-2 flex-wrap">
               <h3
                 onClick={() => onViewDetails(event)}
-                className="text-base sm:text-lg font-bold text-neutral-900 hover:text-red-600 transition cursor-pointer"
+                className="text-base sm:text-lg font-bold text-slate-900 hover:text-rose-600 transition cursor-pointer"
               >
                 {event.title}
               </h3>
+
+              {/* Public/Private Pill */}
               <span
-                className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold ${
+                className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold border ${
                   event.eventType === "Private"
-                    ? "bg-amber-50 text-amber-800 border border-amber-200/80"
-                    : "bg-blue-50 text-blue-700 border border-blue-200/80"
+                    ? "bg-amber-50 text-amber-800 border-amber-200/70"
+                    : "bg-blue-50 text-blue-700 border-blue-200/70"
                 }`}
               >
-                {event.eventType === "Private" ? "🔒 Private" : "🌐 Public"}
+                {event.eventType === "Private" ? (
+                  <Lock className="h-3 w-3" />
+                ) : (
+                  <Globe className="h-3 w-3" />
+                )}
+                <span>{event.eventType === "Private" ? "Private" : "Public"}</span>
               </span>
-              {/* Explicit status text pill in header */}
+
+              {/* Single clean status badge */}
               <span
-                className={`inline-flex items-center gap-1 rounded-md px-2.5 py-0.5 text-[11px] font-semibold ${getStatusBadge(
+                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-0.5 text-[11px] font-semibold border ${getStatusBadge(
                   status
                 )}`}
               >
-                <span className={`h-1.5 w-1.5 rounded-full ${status === "Ongoing" ? "bg-emerald-500 animate-pulse" : status === "Upcoming" ? "bg-indigo-500" : "bg-neutral-400"}`} />
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    status === "Ongoing"
+                      ? "bg-emerald-500 animate-pulse"
+                      : status === "Upcoming"
+                      ? "bg-indigo-500"
+                      : "bg-slate-400"
+                  }`}
+                />
                 {getStatusText(status)}
               </span>
             </div>
 
-            {/* Date, Location & Status Row */}
-            <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs text-neutral-500">
-              <div className="flex items-center gap-1">
-                <span className="font-semibold text-neutral-700">Status:</span>
-                <span className={`font-semibold ${status === "Ongoing" ? "text-emerald-700" : status === "Upcoming" ? "text-indigo-700" : "text-neutral-600"}`}>
-                  {getStatusText(status)}
+            {/* Date, Location & Attendees Row (removed duplicate "Status: Past Event" text) */}
+            <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+              <div className="flex items-center gap-1.5">
+                <Calendar className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                <span className="font-medium text-slate-700">
+                  {formatDateTime(event.date, event.time, event.endTime)}
                 </span>
               </div>
 
-              <span className="text-neutral-300">•</span>
-
-              <div className="flex items-center gap-1.5">
-                <svg
-                  className="h-4 w-4 text-neutral-400 shrink-0"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                  />
-                </svg>
-                <span>{formatDateTime(event.date, event.time, event.endTime)}</span>
-              </div>
-
               {event.location && (
-                <div className="flex items-center gap-1.5">
-                  <svg
-                    className="h-4 w-4 text-neutral-400 shrink-0"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-                    />
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
-                    />
-                  </svg>
-                  <span>{event.location}</span>
-                </div>
+                <>
+                  <span className="text-slate-300">•</span>
+                  <div className="flex items-center gap-1.5">
+                    <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                    <span>{event.location}</span>
+                  </div>
+                </>
               )}
 
-              <span className="text-neutral-300">•</span>
+              <span className="text-slate-300">•</span>
 
               <div
-                className="flex items-center gap-1.5 text-neutral-600"
+                className="flex items-center gap-1.5 text-slate-600"
                 title={`${yesAttendeesCount} confirmed attending (${totalRsvpCount} total responses)`}
               >
-                <svg
-                  className="h-4 w-4 text-neutral-400 shrink-0"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-                  />
-                </svg>
+                <Users className="h-3.5 w-3.5 text-slate-400 shrink-0" />
                 <span className="font-medium text-[11px] sm:text-xs">
                   {yesAttendeesCount} attending
                   {totalRsvpCount > yesAttendeesCount && ` (${totalRsvpCount} responded)`}
@@ -197,7 +169,9 @@ export default function EventCard({
                 {event.tags.map((tag) => (
                   <span
                     key={tag}
-                    className="inline-flex items-center rounded-lg bg-neutral-100 px-2.5 py-0.5 text-xs font-medium text-neutral-600 border border-neutral-200/50"
+                    className={`inline-flex items-center rounded-lg px-2.5 py-0.5 text-xs font-medium border ${getTagStyle(
+                      tag
+                    )}`}
                   >
                     #{tag}
                   </span>
@@ -207,71 +181,53 @@ export default function EventCard({
           </div>
         </div>
 
-        {/* Right Section: Status & Action Buttons (Side-by-side on mobile, no stacking!) */}
+        {/* Right Section: Action Buttons */}
         <div className="flex items-center gap-2 sm:gap-2.5 pt-2 lg:pt-0 w-full lg:w-auto shrink-0">
-          {/* Desktop Status Badge (hidden on mobile, shown on thumbnail on mobile) */}
-          <span
-            className={`hidden lg:inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold shrink-0 ${getStatusBadge(
-              status
-            )}`}
-          >
-            <span className={`h-1.5 w-1.5 rounded-full ${status === "Ongoing" ? "bg-emerald-500 animate-pulse" : status === "Upcoming" ? "bg-indigo-500" : "bg-neutral-400"}`} />
-            {getStatusText(status)}
-          </span>
-
           {/* View Details Button */}
           <button
             type="button"
             onClick={() => onViewDetails(event)}
-            className="flex-1 lg:flex-initial inline-flex items-center justify-center gap-1.5 sm:gap-2 rounded-xl border border-neutral-300 bg-white px-3.5 sm:px-4 py-2.5 text-xs sm:text-sm font-semibold text-neutral-700 hover:bg-neutral-50 hover:border-neutral-400 hover:text-neutral-900 transition cursor-pointer shadow-2xs"
+            className="flex-1 lg:flex-initial inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-300 hover:text-slate-900 transition cursor-pointer shadow-2xs"
             title="View full event details & RSVPs"
           >
-            <svg
-              className="h-4 w-4 text-neutral-500 shrink-0"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
+            <Eye className="h-4 w-4 text-slate-400 shrink-0" />
             <span className="whitespace-nowrap">View Details</span>
           </button>
 
-          {/* Fill RSVP Button */}
+          {/* RSVP Button */}
           <button
             type="button"
             onClick={() => onConfirmAttendance(event)}
-            className={`flex-1 lg:flex-initial inline-flex items-center justify-center gap-1.5 sm:gap-2 rounded-xl px-3.5 sm:px-4.5 py-2.5 text-xs sm:text-sm font-semibold transition cursor-pointer shadow-xs ${
+            className={`flex-1 lg:flex-initial inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 sm:px-4.5 py-2 text-xs sm:text-sm font-semibold transition cursor-pointer shadow-xs ${
               timeHasChanged
                 ? "bg-amber-500 hover:bg-amber-600 text-white"
+                : status === "Past"
+                ? userAttendee?.status === "yes"
+                  ? "bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200/80 shadow-2xs"
+                  : "bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200/80 shadow-2xs"
                 : userAttendee?.status === "yes"
                 ? "bg-emerald-600 hover:bg-emerald-700 text-white"
                 : userAttendee?.status === "maybe"
                 ? "bg-amber-600 hover:bg-amber-700 text-white"
-                : "bg-neutral-900 hover:bg-neutral-800 text-white"
+                : "bg-slate-900 hover:bg-slate-800 text-white"
             }`}
           >
-            <svg
-              className="h-4 w-4 shrink-0"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"
-              />
-            </svg>
+            {timeHasChanged ? (
+              <AlertCircle className="h-4 w-4 shrink-0 text-white" />
+            ) : userAttendee?.status === "yes" ? (
+              <CheckCircle2 className={`h-4 w-4 shrink-0 ${status === "Past" ? "text-emerald-600" : "text-white"}`} />
+            ) : (
+              <CalendarCheck className="h-4 w-4 shrink-0" />
+            )}
             <span className="whitespace-nowrap">
               {timeHasChanged
                 ? "Acknowledge"
+                : status === "Past"
+                ? userAttendee?.status === "yes"
+                  ? "Attended ✓"
+                  : userAttendee
+                  ? "Past RSVP"
+                  : "Past Event"
                 : userAttendee
                 ? userAttendee.status === "yes"
                   ? "Attending ✓"
@@ -282,24 +238,26 @@ export default function EventCard({
             </span>
           </button>
 
-          {/* Creator actions */}
+          {/* Creator actions: sleek vector icons */}
           {isCreator && (
-            <div className="flex items-center gap-1.5 border-l border-neutral-200 pl-2 sm:pl-2.5 shrink-0">
+            <div className="flex items-center gap-1.5 border-l border-slate-200 pl-2 sm:pl-2.5 shrink-0">
               <button
                 type="button"
                 onClick={() => onEdit(event)}
-                className="flex h-10 w-10 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:bg-neutral-50 transition cursor-pointer shadow-2xs"
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 transition cursor-pointer shadow-2xs"
                 title="Edit Event"
+                aria-label="Edit Event"
               >
-                ✏️
+                <Pencil className="h-4 w-4" />
               </button>
               <button
                 type="button"
                 onClick={() => onDelete(event.id, event.title)}
-                className="flex h-10 w-10 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-400 hover:border-red-200 hover:bg-red-50 hover:text-red-600 transition cursor-pointer shadow-2xs"
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer shadow-2xs"
                 title="Delete Event"
+                aria-label="Delete Event"
               >
-                🗑
+                <Trash2 className="h-4 w-4" />
               </button>
             </div>
           )}
@@ -310,11 +268,11 @@ export default function EventCard({
 
   // Grid card variant (for My Events / grid views)
   return (
-    <div className="group flex flex-col justify-between rounded-2xl border border-neutral-200 bg-white shadow-xs hover:border-neutral-300 hover:shadow-md transition overflow-hidden">
+    <div className="group flex flex-col justify-between rounded-2xl border border-slate-200/80 bg-white shadow-2xs hover:border-slate-300 hover:shadow-md transition overflow-hidden">
       {/* Thumbnail */}
       <div
         onClick={() => onViewDetails(event)}
-        className="relative h-48 w-full cursor-pointer overflow-hidden border-b border-neutral-100"
+        className="relative h-48 w-full cursor-pointer overflow-hidden border-b border-slate-100 bg-slate-100"
       >
         <img
           src={event.imageUrl || fallbackImage}
@@ -326,11 +284,19 @@ export default function EventCard({
         />
         <div className="absolute top-3 right-3">
           <span
-            className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1 text-xs font-semibold shadow-xs ${getStatusBadge(
+            className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1 text-xs font-semibold shadow-xs backdrop-blur-xs ${getStatusBadge(
               status
             )}`}
           >
-            <span className={`h-1.5 w-1.5 rounded-full ${status === "Ongoing" ? "bg-emerald-500 animate-pulse" : status === "Upcoming" ? "bg-indigo-500" : "bg-neutral-400"}`} />
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${
+                status === "Ongoing"
+                  ? "bg-emerald-500 animate-pulse"
+                  : status === "Upcoming"
+                  ? "bg-indigo-500"
+                  : "bg-slate-400"
+              }`}
+            />
             {getStatusText(status)}
           </span>
         </div>
@@ -341,62 +307,46 @@ export default function EventCard({
           <div className="flex items-center gap-2 flex-wrap">
             <h3
               onClick={() => onViewDetails(event)}
-              className="text-base sm:text-lg font-bold text-neutral-900 hover:text-red-600 transition cursor-pointer"
+              className="text-base sm:text-lg font-bold text-slate-900 hover:text-rose-600 transition cursor-pointer"
             >
               {event.title}
             </h3>
             <span
-              className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold ${
+              className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold border ${
                 event.eventType === "Private"
-                  ? "bg-amber-50 text-amber-800 border border-amber-200/80"
-                  : "bg-blue-50 text-blue-700 border border-blue-200/80"
+                  ? "bg-amber-50 text-amber-800 border-amber-200/70"
+                  : "bg-blue-50 text-blue-700 border-blue-200/70"
               }`}
             >
-              {event.eventType === "Private" ? "🔒 Private" : "🌐 Public"}
-            </span>
-            {/* Status text badge in header */}
-            <span
-              className={`inline-flex items-center gap-1 rounded-md px-2.5 py-0.5 text-[11px] font-semibold ${getStatusBadge(
-                status
-              )}`}
-            >
-              <span className={`h-1.5 w-1.5 rounded-full ${status === "Ongoing" ? "bg-emerald-500 animate-pulse" : status === "Upcoming" ? "bg-indigo-500" : "bg-neutral-400"}`} />
-              {getStatusText(status)}
+              {event.eventType === "Private" ? (
+                <Lock className="h-3 w-3" />
+              ) : (
+                <Globe className="h-3 w-3" />
+              )}
+              <span>{event.eventType === "Private" ? "Private" : "Public"}</span>
             </span>
           </div>
 
-          <div className="mt-2.5 flex flex-col gap-1.5 text-xs sm:text-sm text-neutral-500">
-            <div className="flex items-center gap-1.5 text-xs">
-              <span className="font-semibold text-neutral-700">Status:</span>
-              <span className={`font-semibold ${status === "Ongoing" ? "text-emerald-700" : status === "Upcoming" ? "text-indigo-700" : "text-neutral-600"}`}>
-                {getStatusText(status)}
-              </span>
-            </div>
-
+          <div className="mt-2.5 flex flex-col gap-1.5 text-xs sm:text-sm text-slate-500">
             <div className="flex items-center gap-1.5">
-              <svg className="h-4 w-4 text-neutral-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              <span>{formatDateTime(event.date, event.time, event.endTime)}</span>
+              <Calendar className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+              <span className="font-medium text-slate-700">
+                {formatDateTime(event.date, event.time, event.endTime)}
+              </span>
             </div>
 
             {event.location && (
               <div className="flex items-center gap-1.5">
-                <svg className="h-4 w-4 text-neutral-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
+                <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
                 <span>{event.location}</span>
               </div>
             )}
 
             <div
-              className="flex items-center gap-1.5 text-xs text-neutral-600"
+              className="flex items-center gap-1.5 text-xs text-slate-600"
               title={`${yesAttendeesCount} confirmed attending (${totalRsvpCount} total responses)`}
             >
-              <svg className="h-4 w-4 text-neutral-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
+              <Users className="h-3.5 w-3.5 text-slate-400 shrink-0" />
               <span className="font-medium">
                 {yesAttendeesCount} attending
                 {totalRsvpCount > yesAttendeesCount && ` (${totalRsvpCount} responded)`}
@@ -409,7 +359,9 @@ export default function EventCard({
               {event.tags.map((tag) => (
                 <span
                   key={tag}
-                  className={`inline-block rounded-lg px-2.5 py-0.5 text-xs font-medium ${getTagStyle(tag)}`}
+                  className={`inline-block rounded-lg px-2.5 py-0.5 text-xs font-medium border ${getTagStyle(
+                    tag
+                  )}`}
                 >
                   #{tag}
                 </span>
@@ -418,34 +370,44 @@ export default function EventCard({
           )}
         </div>
 
-        {/* Card actions: View Details + Fill RSVP side-by-side in one row + Creator actions */}
-        <div className="mt-6 flex items-center gap-2 border-t border-neutral-100 pt-4">
+        {/* Card actions */}
+        <div className="mt-6 flex items-center gap-2 border-t border-slate-100 pt-4">
           <button
             type="button"
             onClick={() => onViewDetails(event)}
-            className="flex-1 inline-flex items-center justify-center rounded-xl border border-neutral-300 bg-white px-3 sm:px-4 py-2.5 text-xs sm:text-sm font-semibold text-neutral-700 hover:bg-neutral-50 hover:border-neutral-400 transition cursor-pointer shadow-2xs"
+            className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition cursor-pointer shadow-2xs"
           >
-            View Details
+            <Eye className="h-4 w-4 text-slate-400 shrink-0" />
+            <span>Details</span>
           </button>
 
           <button
             type="button"
             onClick={() => onConfirmAttendance(event)}
-            className={`flex-1 inline-flex items-center justify-center rounded-xl px-3 sm:px-4 py-2.5 text-xs sm:text-sm font-semibold transition cursor-pointer shadow-xs ${
-              userAttendee?.status === "yes"
+            className={`flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold transition cursor-pointer shadow-xs ${
+              status === "Past"
+                ? "bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200 shadow-2xs"
+                : userAttendee?.status === "yes"
                 ? "bg-emerald-600 text-white hover:bg-emerald-700"
                 : userAttendee?.status === "maybe"
                 ? "bg-amber-600 text-white hover:bg-amber-700"
-                : "bg-neutral-900 text-white hover:bg-neutral-800"
+                : "bg-slate-900 text-white hover:bg-slate-800"
             }`}
           >
-            {userAttendee
-              ? userAttendee.status === "yes"
-                ? "Attending ✓"
-                : userAttendee.status === "maybe"
-                ? "Maybe ?"
-                : "Change RSVP"
-              : "Fill RSVP"}
+            {userAttendee?.status === "yes" && <CheckCircle2 className="h-4 w-4" />}
+            <span>
+              {status === "Past"
+                ? userAttendee?.status === "yes"
+                  ? "Attended ✓"
+                  : "Past Event"
+                : userAttendee
+                ? userAttendee.status === "yes"
+                  ? "Attending ✓"
+                  : userAttendee.status === "maybe"
+                  ? "Maybe ?"
+                  : "Change RSVP"
+                : "Fill RSVP"}
+            </span>
           </button>
 
           {isCreator && (
@@ -453,18 +415,20 @@ export default function EventCard({
               <button
                 type="button"
                 onClick={() => onEdit(event)}
-                className="flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 text-neutral-600 hover:bg-neutral-100 transition cursor-pointer"
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition cursor-pointer shadow-2xs"
                 title="Edit"
+                aria-label="Edit"
               >
-                ✏️
+                <Pencil className="h-3.5 w-3.5" />
               </button>
               <button
                 type="button"
                 onClick={() => onDelete(event.id, event.title)}
-                className="flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 text-neutral-400 hover:bg-red-50 hover:text-red-600 transition cursor-pointer"
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-400 hover:bg-rose-50 hover:border-rose-200 hover:text-rose-600 transition cursor-pointer shadow-2xs"
                 title="Delete"
+                aria-label="Delete"
               >
-                🗑
+                <Trash2 className="h-3.5 w-3.5" />
               </button>
             </div>
           )}

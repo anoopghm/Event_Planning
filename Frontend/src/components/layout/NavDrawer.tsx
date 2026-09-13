@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { Sparkles, X, LayoutDashboard, Calendar, Plus, LogOut } from "lucide-react";
 import Button from "../ui/Button";
 import type { AuthUser } from "../../types";
 
@@ -54,7 +55,7 @@ export default function NavDrawer({
     <div className="fixed inset-0 z-50 flex md:hidden">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity animate-in fade-in"
+        className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity animate-in fade-in"
         onClick={onClose}
         aria-hidden="true"
       />
@@ -62,40 +63,40 @@ export default function NavDrawer({
       {/* Drawer Panel */}
       <div className="relative z-10 flex h-full w-80 max-w-[85vw] flex-col bg-white shadow-2xl animate-in slide-in-from-left duration-200">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-neutral-100 p-5">
+        <div className="flex items-center justify-between border-b border-slate-100 p-5">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-500 text-base font-bold text-white shadow-xs">
-              ✦
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-rose-600 to-rose-500 text-white shadow-sm shadow-rose-500/20">
+              <Sparkles className="h-4 w-4" />
             </div>
-            <span className="text-xl font-bold tracking-tight text-neutral-900">
-              Event<span className="text-red-500">ly</span>
+            <span className="text-xl font-bold tracking-tight text-slate-900">
+              Event<span className="text-rose-600">ly</span>
             </span>
           </div>
 
           <button
             type="button"
             onClick={onClose}
-            className="flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800 transition cursor-pointer"
+            className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition cursor-pointer"
             aria-label="Close navigation menu"
           >
-            ✕
+            <X className="h-4 w-4" />
           </button>
         </div>
 
         {/* Profile Card */}
-        <div className="border-b border-neutral-100 bg-neutral-50/70 p-5">
+        <div className="border-b border-slate-100 bg-slate-50/70 p-5">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-600 font-bold text-sm">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-700 font-bold text-sm ring-2 ring-white">
               {user.name ? user.name.charAt(0).toUpperCase() : "U"}
             </div>
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                 Signed in as
               </p>
-              <p className="text-sm font-bold text-neutral-900 truncate">
+              <p className="text-sm font-bold text-slate-900 truncate">
                 {user.name}
               </p>
-              <p className="text-xs text-neutral-500 truncate">
+              <p className="text-xs text-slate-500 truncate">
                 {user.email}
               </p>
             </div>
@@ -103,7 +104,7 @@ export default function NavDrawer({
         </div>
 
         {/* Navigation Items */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
+        <div className="flex-1 overflow-y-auto p-4 space-y-2">
           {/* Dashboard */}
           <button
             type="button"
@@ -111,21 +112,25 @@ export default function NavDrawer({
               onViewChange("dashboard");
               onClose();
             }}
-            className={`flex w-full items-center justify-between rounded-xl p-3.5 text-left transition cursor-pointer active:scale-[0.98] ${
+            className={`flex w-full items-center justify-between rounded-xl p-3 text-left transition cursor-pointer active:scale-[0.98] ${
               currentView === "dashboard"
-                ? "bg-red-50 text-red-700 font-semibold border border-red-200/60"
-                : "text-neutral-700 hover:bg-neutral-100"
+                ? "bg-rose-50 text-rose-800 font-semibold border border-rose-200/70"
+                : "text-slate-700 hover:bg-slate-100"
             }`}
           >
             <div className="flex items-center gap-3">
-              <span className="text-lg">📊</span>
+              <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${
+                currentView === "dashboard" ? "bg-rose-100 text-rose-700" : "bg-slate-100 text-slate-600"
+              }`}>
+                <LayoutDashboard className="h-4 w-4" />
+              </div>
               <div>
                 <p className="text-sm font-medium">Dashboard</p>
-                <p className="text-xs text-neutral-400">Overview & statistics</p>
+                <p className="text-xs text-slate-400">Overview & statistics</p>
               </div>
             </div>
             {currentView === "dashboard" && (
-              <span className="text-xs font-bold text-red-500">•</span>
+              <span className="h-2 w-2 rounded-full bg-rose-600" />
             )}
           </button>
 
@@ -136,20 +141,24 @@ export default function NavDrawer({
               onViewChange("my-events");
               onClose();
             }}
-            className={`flex w-full items-center justify-between rounded-xl p-3.5 text-left transition cursor-pointer active:scale-[0.98] ${
+            className={`flex w-full items-center justify-between rounded-xl p-3 text-left transition cursor-pointer active:scale-[0.98] ${
               currentView === "my-events"
-                ? "bg-red-50 text-red-700 font-semibold border border-red-200/60"
-                : "text-neutral-700 hover:bg-neutral-100"
+                ? "bg-rose-50 text-rose-800 font-semibold border border-rose-200/70"
+                : "text-slate-700 hover:bg-slate-100"
             }`}
           >
             <div className="flex items-center gap-3">
-              <span className="text-lg">🗓️</span>
+              <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${
+                currentView === "my-events" ? "bg-rose-100 text-rose-700" : "bg-slate-100 text-slate-600"
+              }`}>
+                <Calendar className="h-4 w-4" />
+              </div>
               <div>
                 <p className="text-sm font-medium">My Events</p>
-                <p className="text-xs text-neutral-400">Events created by you</p>
+                <p className="text-xs text-slate-400">Events created by you</p>
               </div>
             </div>
-            <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-bold text-red-600">
+            <span className="rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-bold text-rose-700">
               {eventsCount}
             </span>
           </button>
@@ -161,19 +170,22 @@ export default function NavDrawer({
               onClose();
               onOpenCreateModal();
             }}
-            className="flex w-full items-center gap-3 rounded-xl p-3.5 text-left text-neutral-700 hover:bg-neutral-100 transition cursor-pointer active:scale-[0.98]"
+            className="flex w-full items-center gap-3 rounded-xl p-3 text-left text-slate-700 hover:bg-slate-100 transition cursor-pointer active:scale-[0.98]"
           >
-            <span className="text-lg">➕</span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
+              <Plus className="h-4 w-4" />
+            </div>
             <div>
               <p className="text-sm font-medium">Create New Event</p>
-              <p className="text-xs text-neutral-400">Add a schedule with tags</p>
+              <p className="text-xs text-slate-400">Add a schedule with tags</p>
             </div>
           </button>
         </div>
 
         {/* Footer */}
-        <div className="border-t border-neutral-100 p-4">
-          <Button variant="secondary" fullWidth onClick={onLogout}>
+        <div className="border-t border-slate-100 p-4">
+          <Button variant="secondary" fullWidth onClick={onLogout} className="flex items-center justify-center gap-2">
+            <LogOut className="h-4 w-4 text-slate-500" />
             Sign out
           </Button>
         </div>
