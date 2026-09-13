@@ -1,6 +1,6 @@
 /**
  * API client with secure httpOnly cookie authentication, automatic token refresh,
- * and request retries.
+ * session verification, and request retries.
  */
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
@@ -84,6 +84,29 @@ export async function refreshAccessToken(): Promise<boolean> {
 }
 
 /**
+ * Validates the current session against /api/auth/me using httpOnly cookies.
+ * Clears local state and returns false if the session or cookies are invalid/expired.
+ */
+export async function checkAuth(): Promise<boolean> {
+  try {
+    const response = await fetchWithAuth(`${API_BASE}/api/auth/me`);
+    if (!response.ok) {
+      clearAuth();
+      return false;
+    }
+
+    const data = await response.json();
+    if (data.user) {
+      setAuthUser(data.user);
+    }
+    return true;
+  } catch {
+    clearAuth();
+    return false;
+  }
+}
+
+/**
  * Fetch wrapper that sends httpOnly cookies via credentials: "include"
  * and automatically retries after refreshing tokens if a 401 / TOKEN_EXPIRED occurs.
  */
@@ -103,6 +126,11 @@ export async function fetchWithAuth(
     const refreshed = await refreshAccessToken();
     if (refreshed) {
       response = await fetch(input, updatedInit);
+    } else {
+      clearAuth();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("auth:expired"));
+      }
     }
   }
 
@@ -123,5 +151,8 @@ export async function logoutUser(): Promise<void> {
     console.error("Logout request failed:", err);
   } finally {
     clearAuth();
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("auth:expired"));
+    }
   }
 }

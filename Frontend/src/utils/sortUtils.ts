@@ -111,7 +111,7 @@ export function sortEvents(
       });
 
     case "relevance":
-      if (searchQuery && searchQuery.trim()) {
+      if (searchQuery && searchQuery.trim().length >= 3) {
         return items.sort((a, b) => {
           const scoreDiff =
             getEventLevenshteinScore(b, searchQuery) -

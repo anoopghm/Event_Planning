@@ -169,12 +169,14 @@ export interface SearchableEvent {
   tags?: string[];
 }
 
+export const MIN_SEARCH_QUERY_LENGTH = 3;
+
 /**
  * Searches an event by checking title, location, or description
- * using the Levenshtein search algorithm.
+ * using the Levenshtein search algorithm. Requires at least 3 letters.
  */
 export function matchEventByLevenshtein(event: SearchableEvent, query: string): boolean {
-  if (!query || query.trim() === "") return true;
+  if (!query || query.trim().length < MIN_SEARCH_QUERY_LENGTH) return true;
   const q = query.trim();
 
   // 1. Check Title
@@ -219,7 +221,7 @@ export function matchEventByLevenshtein(event: SearchableEvent, query: string): 
  * Exact title match gives highest score, followed by Levenshtein title, location, description.
  */
 export function getEventLevenshteinScore(event: SearchableEvent, query: string): number {
-  if (!query || query.trim() === "") return 0;
+  if (!query || query.trim().length < MIN_SEARCH_QUERY_LENGTH) return 0;
   const q = query.trim().toLowerCase();
 
   let score = 0;
@@ -279,7 +281,7 @@ export function filterEventsByLevenshtein<T extends SearchableEvent>(
   events: T[],
   query: string
 ): T[] {
-  if (!query || query.trim() === "") {
+  if (!query || query.trim().length < MIN_SEARCH_QUERY_LENGTH) {
     return events;
   }
 

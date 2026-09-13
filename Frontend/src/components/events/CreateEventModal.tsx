@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Globe, Lock, Plus, Check, X } from "lucide-react";
 import Modal from "../ui/Modal";
 import Button from "../ui/Button";
 import { PRESET_TAGS } from "../../constants/mockData";
@@ -302,10 +303,10 @@ function EventFormContent({
         </p>
       </div>
 
-      {/* Event Type: Public vs Private */}
+        {/* Event Type: Public vs Private */}
       <div>
-        <label className="block text-xs sm:text-sm font-semibold text-neutral-800 mb-1.5">
-          Event Access Type <span className="text-red-500">*</span>
+        <label className="block text-xs sm:text-sm font-semibold text-slate-800 mb-1.5">
+          Event Access Type <span className="text-rose-500">*</span>
         </label>
         <div className="grid grid-cols-2 gap-3">
           <button
@@ -313,16 +314,18 @@ function EventFormContent({
             onClick={() => setEventType("Public")}
             className={`flex items-start gap-2.5 rounded-xl border p-3 text-left transition cursor-pointer ${
               eventType === "Public"
-                ? "border-neutral-900 bg-neutral-900 text-white shadow-xs"
-                : "border-neutral-200 bg-white text-neutral-800 hover:bg-neutral-50"
+                ? "border-slate-900 bg-slate-900 text-white shadow-xs"
+                : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50"
             }`}
           >
-            <span className="text-xl">🌐</span>
+            <div className={`p-1.5 rounded-lg ${eventType === "Public" ? "bg-white/10 text-white" : "bg-blue-50 text-blue-600"}`}>
+              <Globe className="h-4 w-4" />
+            </div>
             <div>
               <p className="text-xs sm:text-sm font-bold">Public Event</p>
               <p
                 className={`text-[11px] mt-0.5 ${
-                  eventType === "Public" ? "text-neutral-300" : "text-neutral-500"
+                  eventType === "Public" ? "text-slate-300" : "text-slate-500"
                 }`}
               >
                 Open to all users to discover and RSVP
@@ -335,16 +338,18 @@ function EventFormContent({
             onClick={() => setEventType("Private")}
             className={`flex items-start gap-2.5 rounded-xl border p-3 text-left transition cursor-pointer ${
               eventType === "Private"
-                ? "border-neutral-900 bg-neutral-900 text-white shadow-xs"
-                : "border-neutral-200 bg-white text-neutral-800 hover:bg-neutral-50"
+                ? "border-slate-900 bg-slate-900 text-white shadow-xs"
+                : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50"
             }`}
           >
-            <span className="text-xl">🔒</span>
+            <div className={`p-1.5 rounded-lg ${eventType === "Private" ? "bg-white/10 text-white" : "bg-amber-50 text-amber-600"}`}>
+              <Lock className="h-4 w-4" />
+            </div>
             <div>
               <p className="text-xs sm:text-sm font-bold">Private Event</p>
               <p
                 className={`text-[11px] mt-0.5 ${
-                  eventType === "Private" ? "text-neutral-300" : "text-neutral-500"
+                  eventType === "Private" ? "text-slate-300" : "text-slate-500"
                 }`}
               >
                 Restricted to invited guests only
@@ -358,7 +363,7 @@ function EventFormContent({
       <div>
         <label
           htmlFor="event-description"
-          className="block text-xs sm:text-sm font-semibold text-neutral-800"
+          className="block text-xs sm:text-sm font-semibold text-slate-800"
         >
           Description
         </label>
@@ -368,7 +373,7 @@ function EventFormContent({
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Brief details about the meeting agenda, venue instructions, or notes..."
-          className="mt-1.5 w-full rounded-xl border border-neutral-300 bg-white px-3.5 py-2.5 text-sm outline-none transition placeholder:text-neutral-400 focus:border-red-500 focus:ring-4 focus:ring-red-500/10 resize-none"
+          className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none transition placeholder:text-slate-400 focus:border-rose-400 focus:ring-4 focus:ring-rose-500/10 resize-none shadow-2xs"
         />
       </div>
 
@@ -376,9 +381,9 @@ function EventFormContent({
       <div>
         <label
           htmlFor="event-location"
-          className="block text-xs sm:text-sm font-semibold text-neutral-800"
+          className="block text-xs sm:text-sm font-semibold text-slate-800"
         >
-          Location / Venue <span className="text-xs font-normal text-neutral-400">(Optional)</span>
+          Location / Venue <span className="text-xs font-normal text-slate-400">(Optional)</span>
         </label>
         <input
           id="event-location"
@@ -386,7 +391,7 @@ function EventFormContent({
           value={location}
           onChange={(e) => setLocation(e.target.value)}
           placeholder="e.g. Conference Room 3B, Online (Google Meet / Zoom)"
-          className="mt-1.5 w-full rounded-xl border border-neutral-300 bg-white px-3.5 py-2.5 text-sm outline-none transition placeholder:text-neutral-400 focus:border-red-500 focus:ring-4 focus:ring-red-500/10"
+          className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none transition placeholder:text-slate-400 focus:border-rose-400 focus:ring-4 focus:ring-rose-500/10 shadow-2xs"
         />
       </div>
 
@@ -394,9 +399,9 @@ function EventFormContent({
       <div>
         <label
           htmlFor="event-image-url"
-          className="block text-xs sm:text-sm font-semibold text-neutral-800"
+          className="block text-xs sm:text-sm font-semibold text-slate-800"
         >
-          Image URL <span className="text-xs font-normal text-neutral-400">(Optional - auto-assigned if empty)</span>
+          Image URL <span className="text-xs font-normal text-slate-400">(Optional - auto-assigned if empty)</span>
         </label>
         <input
           id="event-image-url"
@@ -404,16 +409,16 @@ function EventFormContent({
           value={imageUrl}
           onChange={(e) => setImageUrl(e.target.value)}
           placeholder="e.g. https://images.unsplash.com/photo-..."
-          className="mt-1.5 w-full rounded-xl border border-neutral-300 bg-white px-3.5 py-2.5 text-sm outline-none transition placeholder:text-neutral-400 focus:border-red-500 focus:ring-4 focus:ring-red-500/10"
+          className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none transition placeholder:text-slate-400 focus:border-rose-400 focus:ring-4 focus:ring-rose-500/10 shadow-2xs"
         />
       </div>
 
       {/* Tags */}
       <div className="pt-1">
-        <label className="block text-xs sm:text-sm font-semibold text-neutral-800">
+        <label className="block text-xs sm:text-sm font-semibold text-slate-800">
           Tags / Categories
         </label>
-        <p className="mt-0.5 text-xs text-neutral-500">
+        <p className="mt-0.5 text-xs text-slate-500">
           Select presets or enter custom tags for quick filtering.
         </p>
 
@@ -428,12 +433,12 @@ function EventFormContent({
                 onClick={() => toggleTag(tag)}
                 className={`inline-flex items-center gap-1 rounded-xl px-2.5 py-1 text-xs font-medium transition cursor-pointer ${
                   isSelected
-                    ? "bg-red-500 text-white shadow-xs"
-                    : "border border-neutral-200 bg-neutral-50 text-neutral-700 hover:border-neutral-300 hover:bg-neutral-100"
+                    ? "bg-rose-600 text-white shadow-2xs"
+                    : "border border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300 hover:bg-slate-100"
                 }`}
               >
-                <span>{isSelected ? "✓" : "+"}</span>
-                {tag}
+                {isSelected ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+                <span>{tag}</span>
               </button>
             );
           })}
@@ -447,12 +452,12 @@ function EventFormContent({
             onChange={(e) => setCustomTagInput(e.target.value)}
             onKeyDown={handleCustomTagKeyDown}
             placeholder="Add custom tag (e.g. Sprint, Sync)..."
-            className="flex-1 rounded-xl border border-neutral-300 bg-white px-3.5 py-2 text-xs outline-none transition placeholder:text-neutral-400 focus:border-red-500 focus:ring-3 focus:ring-red-500/10"
+            className="flex-1 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs outline-none transition placeholder:text-slate-400 focus:border-rose-400 focus:ring-4 focus:ring-rose-500/10 shadow-2xs"
           />
           <button
             type="button"
             onClick={addCustomTag}
-            className="rounded-xl border border-neutral-300 bg-neutral-100 px-3.5 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-200 transition cursor-pointer"
+            className="rounded-xl border border-slate-200 bg-slate-100 hover:bg-slate-200 px-3.5 py-2 text-xs font-semibold text-slate-700 transition cursor-pointer shadow-2xs"
           >
             Add Tag
           </button>
@@ -460,23 +465,23 @@ function EventFormContent({
 
         {/* Selected tags badges */}
         {selectedTags.length > 0 && (
-          <div className="mt-3 flex flex-wrap items-center gap-1.5 rounded-xl border border-dashed border-neutral-200 bg-neutral-50/60 p-2.5">
-            <span className="text-xs font-medium text-neutral-500 mr-1">
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-2.5">
+            <span className="text-xs font-medium text-slate-500 mr-1">
               Selected:
             </span>
             {selectedTags.map((tag) => (
               <span
                 key={tag}
-                className="inline-flex items-center gap-1.5 rounded-md bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-rose-100 px-2.5 py-0.5 text-xs font-semibold text-rose-700"
               >
                 #{tag}
                 <button
                   type="button"
                   onClick={() => removeTag(tag)}
-                  className="hover:text-red-900 focus:outline-hidden cursor-pointer"
+                  className="hover:text-rose-900 focus:outline-hidden cursor-pointer"
                   title={`Remove ${tag}`}
                 >
-                  ×
+                  <X className="h-3 w-3" />
                 </button>
               </span>
             ))}
@@ -485,9 +490,9 @@ function EventFormContent({
       </div>
 
       {/* Buttons */}
-      <div className="mt-6 flex items-center justify-end gap-3 pt-3 border-t border-neutral-100">
+      <div className="mt-6 flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
         <Button variant="secondary" onClick={onClose}>
-          {isEditMode ? "Cancel" : "← Back to Dashboard"}
+          {isEditMode ? "Cancel" : "Back to Dashboard"}
         </Button>
         <Button type="submit" variant="primary">
           {isEditMode ? "Save Changes" : "Create Event"}

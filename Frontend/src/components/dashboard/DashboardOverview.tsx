@@ -1,4 +1,18 @@
 import { useState, useMemo } from "react";
+import {
+  Search,
+  X,
+  Plus,
+  ArrowLeft,
+  Filter as FilterIcon,
+  ArrowUpDown,
+  CalendarDays,
+  CalendarX2,
+  ChevronLeft,
+  ChevronRight,
+  Sparkles,
+  RotateCcw,
+} from "lucide-react";
 import StatsGrid from "./StatsGrid";
 import EventCard from "../events/EventCard";
 import { getEffectiveEventStatus } from "../../utils/eventUtils";
@@ -44,7 +58,7 @@ export default function DashboardOverview({
   searchQuery,
   onSearchChange,
 }: DashboardOverviewProps) {
-  // Tabs: "All", "Upcoming", "Ongoing", "Past" (Upcoming is active by default)
+  // Tabs: "All", "Upcoming", "Ongoing", "Past"
   const [activeTab, setActiveTab] = useState<"All" | "Ongoing" | "Upcoming" | "Past">("Upcoming");
   const [searchStatusFilter, setSearchStatusFilter] = useState<"All" | "Ongoing" | "Upcoming" | "Past">("All");
   const [sortBy, setSortBy] = useState<EventSortOption>("event_time_asc");
@@ -52,14 +66,15 @@ export default function DashboardOverview({
   const [localSearchQuery, setLocalSearchQuery] = useState("");
   const [localEventType, setLocalEventType] = useState<string>("All");
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 3;
+  const itemsPerPage = 4;
 
   const activeSearch = searchQuery !== undefined ? searchQuery : localSearchQuery;
   const handleSearchChange = onSearchChange || setLocalSearchQuery;
   const effectiveEventType = selectedEventType !== undefined ? selectedEventType : localEventType;
   const handleEventTypeChange = onSelectEventType || setLocalEventType;
 
-  const isSearching = Boolean(activeSearch.trim());
+  const isSearching = Boolean(activeSearch.trim().length >= 3);
+  const isQueryTooShort = activeSearch.trim().length > 0 && activeSearch.trim().length < 3;
 
   // Stats calculation
   const createdByYouCount = events.filter(
@@ -72,7 +87,7 @@ export default function DashboardOverview({
     )
   ).length;
 
-  // When searching, all matching events across all statuses (Upcoming, Ongoing, and Past) are found
+  // When searching, all matching events across all statuses are found
   const allMatchingSearchEvents = useMemo(() => {
     if (!isSearching) return [];
     return events.filter((e) => {
@@ -93,7 +108,7 @@ export default function DashboardOverview({
     });
   }, [events, isSearching, activeSearch, selectedTag, effectiveEventType]);
 
-  // Status breakdown of search results across Upcoming, Ongoing, and Past
+  // Status breakdown of search results
   const searchCounts = useMemo(() => {
     let upcoming = 0;
     let ongoing = 0;
@@ -107,7 +122,21 @@ export default function DashboardOverview({
     return { total: allMatchingSearchEvents.length, upcoming, ongoing, past };
   }, [allMatchingSearchEvents]);
 
-  // Filtered events based on search (across Upcoming, Ongoing, Past) or activeTab, sorted by sortBy
+  // Tab counts for normal browsing
+  const tabCounts = useMemo(() => {
+    let upcoming = 0;
+    let ongoing = 0;
+    let past = 0;
+    events.forEach((e) => {
+      const st = getEffectiveEventStatus(e);
+      if (st === "Ongoing") ongoing++;
+      else if (st === "Past" || (st as string) === "Finished") past++;
+      else upcoming++;
+    });
+    return { total: events.length, upcoming, ongoing, past };
+  }, [events]);
+
+  // Filtered events
   const tabFilteredEvents = useMemo(() => {
     if (isSearching) {
       let matched = allMatchingSearchEvents;
@@ -123,7 +152,7 @@ export default function DashboardOverview({
       return sortEvents(matched, sortBy, activeSearch);
     }
 
-    // Normal browsing (not searching)
+    // Normal browsing
     const matched = events.filter((e) => {
       const status = getEffectiveEventStatus(e);
       const matchesTab =
@@ -169,107 +198,186 @@ export default function DashboardOverview({
   const endItemNumber = Math.min(currentPage * itemsPerPage, totalItems);
 
   return (
-    <div className="space-y-8">
-      {/* 1. Dark Welcome Banner (Matches screenshot) */}
-      <div className="relative overflow-hidden rounded-2xl bg-[#18181b] px-7 py-8 text-white shadow-md">
-        <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-          <div className="max-w-2xl">
-            <span className="text-xs font-normal text-neutral-400">
-              Welcome back,
-            </span>
-            <h1 className="mt-0.5 text-3xl font-bold tracking-tight text-white sm:text-4xl">
-              {user.name}!
-            </h1>
-            <p className="mt-2 text-xs sm:text-sm text-neutral-400 font-normal leading-relaxed">
-              Manage your events, confirm invitations, track RSVPs, and organize schedules seamlessly.
-            </p>
-          </div>
+    <div className="space-y-7">
+      {/* 1. Elevated Welcome Hero Banner (Hidden during search results) */}
+      {!isSearching && (
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-slate-900 to-zinc-900 p-6 sm:p-8 text-white shadow-md border border-slate-800/80">
+          {/* Soft background light glow */}
+          <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-rose-500/10 blur-3xl" />
+          <div className="pointer-events-none absolute left-1/3 -bottom-16 h-56 w-56 rounded-full bg-indigo-500/10 blur-3xl" />
 
-          {/* Right graphic box */}
-          <div className="flex items-center gap-3.5 md:border-l md:border-neutral-700/80 md:pl-8">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-neutral-600 bg-neutral-800/80 text-white">
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
+          <div className="relative z-10 flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+            <div className="max-w-2xl">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-0.5 text-xs font-medium text-slate-300 border border-white/10 backdrop-blur-sm">
+                  <Sparkles className="h-3.5 w-3.5 text-rose-400" />
+                  Workspace Overview
+                </span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight text-white">
+                Welcome back, {user.name}!
+              </h1>
+              <p className="mt-2 text-xs sm:text-sm text-slate-300 font-normal leading-relaxed max-w-xl">
+                Organize events, confirm RSVPs, coordinate schedules, and manage all your gatherings seamlessly.
+              </p>
             </div>
-            <div>
-              <p className="text-xs font-medium text-neutral-200">
-                Turn ideas into
-              </p>
-              <p className="text-xs font-semibold text-white">
-                unforgettable events.
-              </p>
-              <div className="mt-1 h-0.5 w-10 bg-neutral-500 rounded-full" />
+
+            {/* Right graphic box */}
+            <div className="flex items-center gap-3.5 md:border-l md:border-slate-800 md:pl-7">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-rose-400 backdrop-blur-md shadow-2xs">
+                <CalendarDays className="h-6 w-6" />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-slate-300">
+                  Turn your ideas into
+                </p>
+                <p className="text-xs font-bold text-white tracking-wide">
+                  unforgettable events.
+                </p>
+                <div className="mt-1.5 h-1 w-8 bg-gradient-to-r from-rose-500 to-indigo-500 rounded-full" />
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* 2. Stats Grid (4 cards matching screenshot) */}
-      <StatsGrid
-        totalEvents={events.length}
-        createdCount={createdByYouCount}
-        attendingCount={attendingCount}
-        tagsCount={uniqueTags.length}
-        onCardClick={onGoToMyEvents}
-      />
+      {/* 2. Stats Grid (Hidden during search results) */}
+      {!isSearching && (
+        <StatsGrid
+          totalEvents={events.length}
+          createdCount={createdByYouCount}
+          attendingCount={attendingCount}
+          tagsCount={uniqueTags.length}
+          onCardClick={onGoToMyEvents}
+        />
+      )}
+
+      {/* Notice when 1 or 2 letters are typed */}
+      {isQueryTooShort && (
+        <div className="rounded-2xl border border-amber-200/80 bg-amber-50/80 p-3.5 sm:p-4 flex items-center justify-between gap-3 text-xs text-amber-800 animate-in fade-in shadow-2xs">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
+              <Search className="h-3.5 w-3.5" />
+            </div>
+            <span>
+              Type at least <strong>3 letters</strong> to search events ({activeSearch.trim().length} of 3 entered).
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleSearchChange("")}
+            className="font-semibold text-amber-700 hover:text-amber-900 cursor-pointer"
+          >
+            Clear
+          </button>
+        </div>
+      )}
 
       {/* 3. Events Section */}
       <div className="space-y-4">
         {/* Section Header */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight text-neutral-900">
-              Events
-            </h2>
-            <p className="text-xs sm:text-sm text-neutral-500 mt-0.5">
-              Browse your events, view details, and manage RSVPs.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={onOpenCreateModal}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-neutral-900 px-5 py-2.5 text-xs sm:text-sm font-semibold text-white hover:bg-neutral-800 transition cursor-pointer shadow-xs"
-          >
-            <span className="text-base font-normal">+</span>
-            <span>Create Event</span>
-          </button>
-        </div>
-
-        {/* Search Results Banner OR Regular Tabs Bar */}
         {isSearching ? (
-          <div className="rounded-2xl border border-neutral-800 bg-[#18181b] text-white p-4 sm:p-5 shadow-sm space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pt-1">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  handleSearchChange("");
+                  setSearchStatusFilter("All");
+                  setSortBy("event_time_asc");
+                  setCurrentPage(1);
+                }}
+                className="self-start inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-2xs transition cursor-pointer"
+                title="Back to Dashboard"
+              >
+                <ArrowLeft className="h-4 w-4 text-slate-500" />
+                <span>Back to Dashboard</span>
+              </button>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-base">🔍</span>
-                  <h3 className="text-sm sm:text-base font-bold text-white">
-                    Search results for <span className="text-red-400">"{activeSearch}"</span>
-                  </h3>
+                  <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-slate-900">
+                    Search Results
+                  </h1>
+                  <span className="rounded-full bg-rose-50 border border-rose-100 px-2 py-0.5 text-xs font-bold text-rose-700">
+                    {searchCounts.total}
+                  </span>
                 </div>
-                <p className="mt-1 text-xs text-neutral-400">
-                  Showing results across all <span className="font-semibold text-white">Upcoming</span>, <span className="font-semibold text-white">Ongoing</span>, and <span className="font-semibold text-white">Past</span> events.
+                <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+                  Showing matches for <span className="font-semibold text-slate-800">"{activeSearch}"</span>
                 </p>
               </div>
+            </div>
 
-              <div className="flex items-center gap-2 self-start sm:self-auto shrink-0 flex-wrap">
-                {/* Sort in Search Results */}
-                <div className="flex items-center gap-1.5 rounded-xl border border-neutral-700 bg-neutral-800/90 px-3 py-1.5 text-xs">
-                  <span className="text-neutral-400 font-medium">Sort:</span>
+            <button
+              type="button"
+              onClick={onOpenCreateModal}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 hover:bg-rose-700 active:bg-rose-800 px-4 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-xs hover:shadow transition cursor-pointer self-start sm:self-auto"
+            >
+              <Plus className="h-4 w-4 shrink-0" strokeWidth={2.5} />
+              <span>Create Event</span>
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+                Events
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+                Browse all scheduled events, view details, and manage invitations.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={onOpenCreateModal}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 hover:bg-rose-700 active:bg-rose-800 px-4.5 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-xs hover:shadow transition cursor-pointer"
+            >
+              <Plus className="h-4 w-4 shrink-0" strokeWidth={2.5} />
+              <span>Create Event</span>
+            </button>
+          </div>
+        )}
+
+        {/* Search Results Panel OR Regular Tabs Bar */}
+        {isSearching ? (
+          <div className="rounded-2xl border border-slate-200/90 bg-white p-3.5 sm:p-5 shadow-xs space-y-3 animate-in fade-in duration-150">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="flex items-start gap-2.5 sm:gap-3">
+                <div className="flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-600 border border-rose-100/80">
+                  <Search className="h-4 w-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-sm sm:text-base font-bold text-slate-900">
+                      Search results for <span className="text-rose-600">"{activeSearch}"</span>
+                    </h3>
+                  </div>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Matches across Upcoming, Ongoing, and Past events.
+                  </p>
+                </div>
+              </div>
+
+              {/* Controls: Sort Dropdown + Clear Search */}
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                {/* Sort selector in Search Results */}
+                <div className="flex-1 sm:flex-initial flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50/80 px-2.5 sm:px-3 py-1.5 text-xs">
+                  <ArrowUpDown className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                  <span className="text-slate-500 font-medium shrink-0">Sort:</span>
                   <select
                     value={sortBy}
                     onChange={(e) => {
                       setSortBy(e.target.value as EventSortOption);
                       setCurrentPage(1);
                     }}
-                    className="bg-transparent text-white font-semibold outline-none cursor-pointer text-xs"
+                    className="w-full bg-transparent text-slate-800 font-semibold outline-none cursor-pointer text-xs"
                   >
-                    <option value="relevance" className="bg-[#18181b] text-white">🎯 Relevance (Best Match)</option>
-                    <option value="popularity" className="bg-[#18181b] text-white">🔥 Popularity (Most RSVPs)</option>
-                    <option value="event_time_asc" className="bg-[#18181b] text-white">📅 Event Time (Soonest)</option>
-                    <option value="creation_time" className="bg-[#18181b] text-white">⏱️ Creation Time (Newest)</option>
-                    <option value="event_time_desc" className="bg-[#18181b] text-white">📆 Event Time (Furthest)</option>
+                    <option value="relevance">Relevance</option>
+                    <option value="event_time_asc">Soonest Event</option>
+                    <option value="popularity">Most RSVPs</option>
+                    <option value="creation_time">Newest</option>
+                    <option value="event_time_desc">Furthest Event</option>
                   </select>
                 </div>
 
@@ -281,30 +389,30 @@ export default function DashboardOverview({
                     setSortBy("event_time_asc");
                     setCurrentPage(1);
                   }}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-neutral-700 bg-neutral-800/90 px-3.5 py-1.5 text-xs font-semibold text-neutral-200 hover:bg-neutral-700 hover:text-white transition cursor-pointer shadow-2xs"
+                  className="shrink-0 inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:text-slate-900 transition cursor-pointer shadow-2xs"
                 >
-                  <span>✕</span>
+                  <X className="h-3.5 w-3.5 text-slate-400" />
                   <span>Clear Search</span>
                 </button>
               </div>
             </div>
 
-            {/* Quick Status Filters for Search Results */}
-            <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-neutral-800">
-              <span className="text-xs text-neutral-400 font-medium">Filter by status:</span>
+            {/* Quick Status Filters for Search Results: smooth horizontal touch scroll on mobile */}
+            <div className="flex items-center gap-1.5 pt-2.5 border-t border-slate-100 overflow-x-auto no-scrollbar -mx-1 px-1 sm:flex-wrap">
+              <span className="text-xs text-slate-400 font-medium shrink-0 mr-1">Status:</span>
               <button
                 type="button"
                 onClick={() => {
                   setSearchStatusFilter("All");
                   setCurrentPage(1);
                 }}
-                className={`rounded-lg px-3 py-1 text-xs font-semibold transition cursor-pointer ${
+                className={`shrink-0 rounded-lg px-3 py-1 text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
                   searchStatusFilter === "All"
-                    ? "bg-white text-neutral-900 shadow-xs"
-                    : "bg-neutral-800/80 text-neutral-300 hover:bg-neutral-700"
+                    ? "bg-slate-900 text-white shadow-2xs"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200/80 hover:text-slate-900"
                 }`}
               >
-                All Events ({searchCounts.total})
+                All ({searchCounts.total})
               </button>
 
               <button
@@ -313,13 +421,13 @@ export default function DashboardOverview({
                   setSearchStatusFilter("Upcoming");
                   setCurrentPage(1);
                 }}
-                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition cursor-pointer ${
+                className={`shrink-0 inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
                   searchStatusFilter === "Upcoming"
-                    ? "bg-indigo-600 text-white shadow-xs"
-                    : "bg-neutral-800/80 text-indigo-300 hover:bg-neutral-700"
+                    ? "bg-indigo-600 text-white shadow-2xs"
+                    : "bg-indigo-50/70 text-indigo-700 border border-indigo-100 hover:bg-indigo-100/70"
                 }`}
               >
-                <span className="h-1.5 w-1.5 rounded-full bg-indigo-400" />
+                <span className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
                 Upcoming ({searchCounts.upcoming})
               </button>
 
@@ -329,13 +437,13 @@ export default function DashboardOverview({
                   setSearchStatusFilter("Ongoing");
                   setCurrentPage(1);
                 }}
-                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition cursor-pointer ${
+                className={`shrink-0 inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
                   searchStatusFilter === "Ongoing"
-                    ? "bg-emerald-600 text-white shadow-xs"
-                    : "bg-neutral-800/80 text-emerald-300 hover:bg-neutral-700"
+                    ? "bg-emerald-600 text-white shadow-2xs"
+                    : "bg-emerald-50/70 text-emerald-700 border border-emerald-100 hover:bg-emerald-100/70"
                 }`}
               >
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 Ongoing ({searchCounts.ongoing})
               </button>
 
@@ -345,13 +453,13 @@ export default function DashboardOverview({
                   setSearchStatusFilter("Past");
                   setCurrentPage(1);
                 }}
-                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition cursor-pointer ${
+                className={`shrink-0 inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
                   searchStatusFilter === "Past"
-                    ? "bg-neutral-600 text-white shadow-xs"
-                    : "bg-neutral-800/80 text-neutral-300 hover:bg-neutral-700"
+                    ? "bg-slate-700 text-white shadow-2xs"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200/80 hover:text-slate-900"
                 }`}
               >
-                <span className="h-1.5 w-1.5 rounded-full bg-neutral-400" />
+                <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
                 Past ({searchCounts.past})
               </button>
             </div>
@@ -359,9 +467,18 @@ export default function DashboardOverview({
         ) : (
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pt-1">
             {/* Status Tabs: All / Upcoming / Ongoing / Past */}
-            <div className="flex items-center gap-1 rounded-xl bg-neutral-100 p-1 border border-neutral-200/80 w-fit">
+            <div className="flex items-center gap-1 rounded-xl bg-slate-100/90 p-1 border border-slate-200/70 w-fit">
               {(["All", "Upcoming", "Ongoing", "Past"] as const).map((tab) => {
                 const isActive = activeTab === tab;
+                const count =
+                  tab === "All"
+                    ? tabCounts.total
+                    : tab === "Upcoming"
+                    ? tabCounts.upcoming
+                    : tab === "Ongoing"
+                    ? tabCounts.ongoing
+                    : tabCounts.past;
+
                 return (
                   <button
                     key={tab}
@@ -370,13 +487,22 @@ export default function DashboardOverview({
                       setActiveTab(tab);
                       setCurrentPage(1);
                     }}
-                    className={`rounded-lg px-3.5 sm:px-4 py-2 text-xs sm:text-sm font-semibold transition cursor-pointer ${
+                    className={`flex items-center gap-1.5 rounded-lg px-3.5 sm:px-4 py-1.5 text-xs sm:text-sm font-semibold transition cursor-pointer ${
                       isActive
-                        ? "bg-[#18181b] text-white shadow-xs"
-                        : "text-neutral-600 hover:text-neutral-900 hover:bg-neutral-200/50"
+                        ? "bg-white text-slate-900 shadow-xs"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/50"
                     }`}
                   >
-                    {tab}
+                    <span>{tab}</span>
+                    <span
+                      className={`text-[11px] px-1.5 py-0.2 rounded-full font-bold ${
+                        isActive
+                          ? "bg-slate-100 text-slate-800"
+                          : "text-slate-400"
+                      }`}
+                    >
+                      {count}
+                    </span>
                   </button>
                 );
               })}
@@ -385,192 +511,178 @@ export default function DashboardOverview({
             {/* Right side toolbar: Sort + Filter */}
             <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
               {/* Sort Selector */}
-              <div className="flex items-center gap-1.5 rounded-xl border border-neutral-300 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 shadow-2xs">
-                <svg className="h-4 w-4 text-neutral-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
-                </svg>
-                <span className="text-neutral-500 font-medium">Sort:</span>
+              <div className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-2xs">
+                <ArrowUpDown className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                <span className="text-slate-500 font-medium">Sort:</span>
                 <select
                   value={sortBy}
                   onChange={(e) => {
                     setSortBy(e.target.value as EventSortOption);
                     setCurrentPage(1);
                   }}
-                  className="bg-transparent text-neutral-900 font-semibold outline-none cursor-pointer"
+                  className="bg-transparent text-slate-900 font-semibold outline-none cursor-pointer"
                 >
-                  <option value="event_time_asc">📅 Event Time (Soonest)</option>
-                  <option value="popularity">🔥 Popularity (Most RSVPs)</option>
-                  <option value="creation_time">⏱️ Creation Time (Newest)</option>
-                  <option value="event_time_desc">📆 Event Time (Furthest)</option>
+                  <option value="event_time_asc">Event Time (Soonest)</option>
+                  <option value="popularity">Popularity (Most RSVPs)</option>
+                  <option value="creation_time">Creation Time (Newest)</option>
+                  <option value="event_time_desc">Event Time (Furthest)</option>
                 </select>
               </div>
 
-              {/* Filter Button */}
+              {/* Filter Button (Replaces arbitrary #1e3a34 with cohesive slate button) */}
               <div className="relative">
                 <button
                   type="button"
                   onClick={() => setIsFilterOpen(!isFilterOpen)}
-                  className="inline-flex items-center gap-2 rounded-xl bg-[#1e3a34] hover:bg-[#162e29] px-4.5 py-2 text-xs sm:text-sm font-semibold text-white shadow-xs transition cursor-pointer"
+                  className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs sm:text-sm font-semibold transition cursor-pointer shadow-2xs border ${
+                    isFilterOpen || selectedTag !== "All" || effectiveEventType !== "All"
+                      ? "bg-slate-900 border-slate-900 text-white"
+                      : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300"
+                  }`}
                 >
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-                  </svg>
+                  <FilterIcon className="h-3.5 w-3.5" />
                   <span>Filter</span>
                   {(selectedTag !== "All" || effectiveEventType !== "All" || Boolean(activeSearch)) && (
-                    <span className="h-2 w-2 rounded-full bg-red-400" />
+                    <span className="h-2 w-2 rounded-full bg-rose-500" />
                   )}
                 </button>
 
-            {/* Filter Dropdown Popover */}
-            {isFilterOpen && (
-              <div className="absolute right-0 top-full mt-2 z-30 w-72 rounded-2xl border border-neutral-200 bg-white p-4 shadow-xl animate-in fade-in zoom-in-95">
-                <div className="flex items-center justify-between border-b border-neutral-100 pb-2">
-                  <span className="text-xs font-bold text-neutral-800">Filter Events</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onSelectTag("All");
-                      handleEventTypeChange("All");
-                      handleSearchChange("");
-                      setSortBy("event_time_asc");
-                      setIsFilterOpen(false);
-                    }}
-                    className="text-[11px] text-red-500 hover:underline cursor-pointer"
-                  >
-                    Reset
-                  </button>
-                </div>
-
-                {/* Sort By inside Popover */}
-                <div className="mt-3">
-                  <label className="text-[11px] font-semibold text-neutral-600">Sort Events</label>
-                  <select
-                    value={sortBy}
-                    onChange={(e) => {
-                      setSortBy(e.target.value as EventSortOption);
-                      setCurrentPage(1);
-                    }}
-                    className="mt-1 w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs font-semibold text-neutral-800 outline-none focus:border-neutral-900 cursor-pointer"
-                  >
-                    <option value="event_time_asc">📅 Event Time (Soonest)</option>
-                    <option value="popularity">🔥 Popularity (Most RSVPs)</option>
-                    <option value="creation_time">⏱️ Creation Time (Newest)</option>
-                    <option value="event_time_desc">📆 Event Time (Furthest)</option>
-                  </select>
-                </div>
-
-                {/* Event Type Filter (Public vs Private) */}
-                <div className="mt-3">
-                  <label className="text-[11px] font-semibold text-neutral-600">Event Type</label>
-                  <div className="mt-1 flex items-center gap-1.5">
-                    {(["All", "Public", "Private"] as const).map((typeOption) => {
-                      const isSelected = effectiveEventType === typeOption;
-                      return (
-                        <button
-                          key={typeOption}
-                          type="button"
-                          onClick={() => {
-                            handleEventTypeChange(typeOption);
-                            setCurrentPage(1);
-                          }}
-                          className={`flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold transition cursor-pointer ${
-                            isSelected
-                              ? "bg-neutral-900 text-white shadow-2xs"
-                              : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"
-                          }`}
-                        >
-                          {typeOption === "All" ? "All" : typeOption === "Public" ? "🌐 Public" : "🔒 Private"}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Search query input */}
-                <div className="mt-3">
-                  <label className="text-[11px] font-semibold text-neutral-600">Search</label>
-                  <input
-                    type="text"
-                    value={activeSearch}
-                    onChange={(e) => {
-                      handleSearchChange(e.target.value);
-                      setCurrentPage(1);
-                    }}
-                    placeholder="Search by title, location, or description..."
-                    className="mt-1 w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs outline-none focus:border-neutral-900"
-                  />
-                </div>
-
-                {/* Tag Filter */}
-                <div className="mt-3">
-                  <label className="text-[11px] font-semibold text-neutral-600">Tag / Category</label>
-                  <div className="mt-1 flex flex-wrap gap-1 max-h-36 overflow-y-auto">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onSelectTag("All");
-                        setCurrentPage(1);
-                      }}
-                      className={`rounded-md px-2 py-0.5 text-[11px] font-medium cursor-pointer ${
-                        selectedTag === "All"
-                          ? "bg-neutral-900 text-white"
-                          : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
-                      }`}
-                    >
-                      All ({events.length})
-                    </button>
-                    {uniqueTags.map((tag) => (
+                {/* Filter Dropdown Popover */}
+                {isFilterOpen && (
+                  <div className="absolute right-0 top-full mt-2 z-30 w-72 rounded-2xl border border-slate-200 bg-white p-4 shadow-xl animate-in fade-in zoom-in-95 duration-150">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                      <span className="text-xs font-bold text-slate-800">Filter Events</span>
                       <button
-                        key={tag}
                         type="button"
                         onClick={() => {
-                          onSelectTag(tag);
+                          onSelectTag("All");
+                          handleEventTypeChange("All");
+                          handleSearchChange("");
+                          setSortBy("event_time_asc");
+                          setIsFilterOpen(false);
+                        }}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600 hover:underline cursor-pointer"
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                        Reset
+                      </button>
+                    </div>
+
+                    {/* Sort By inside Popover */}
+                    <div className="mt-3">
+                      <label className="text-[11px] font-semibold text-slate-600">Sort Events</label>
+                      <select
+                        value={sortBy}
+                        onChange={(e) => {
+                          setSortBy(e.target.value as EventSortOption);
                           setCurrentPage(1);
                         }}
-                        className={`rounded-md px-2 py-0.5 text-[11px] font-medium cursor-pointer ${
-                          selectedTag.toLowerCase() === tag.toLowerCase()
-                            ? "bg-neutral-900 text-white"
-                            : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
-                        }`}
+                        className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:border-slate-900 cursor-pointer"
                       >
-                        #{tag} ({getTagCount(tag)})
-                      </button>
-                    ))}
+                        <option value="event_time_asc">Event Time (Soonest)</option>
+                        <option value="popularity">Popularity (Most RSVPs)</option>
+                        <option value="creation_time">Creation Time (Newest)</option>
+                        <option value="event_time_desc">Event Time (Furthest)</option>
+                      </select>
+                    </div>
+
+                    {/* Event Type Filter (Public vs Private) */}
+                    <div className="mt-3">
+                      <label className="text-[11px] font-semibold text-slate-600">Event Type</label>
+                      <div className="mt-1 flex items-center gap-1.5">
+                        {(["All", "Public", "Private"] as const).map((typeOption) => {
+                          const isSelected = effectiveEventType === typeOption;
+                          return (
+                            <button
+                              key={typeOption}
+                              type="button"
+                              onClick={() => {
+                                handleEventTypeChange(typeOption);
+                                setCurrentPage(1);
+                              }}
+                              className={`flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold transition cursor-pointer ${
+                                isSelected
+                                  ? "bg-slate-900 text-white shadow-2xs"
+                                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                              }`}
+                            >
+                              {typeOption}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Tag Filter */}
+                    <div className="mt-3">
+                      <label className="text-[11px] font-semibold text-slate-600">Categories & Tags</label>
+                      <div className="mt-1.5 flex flex-wrap gap-1 max-h-36 overflow-y-auto">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onSelectTag("All");
+                            setCurrentPage(1);
+                          }}
+                          className={`rounded-md px-2 py-0.5 text-[11px] font-medium cursor-pointer ${
+                            selectedTag === "All"
+                              ? "bg-slate-900 text-white"
+                              : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                          }`}
+                        >
+                          All ({events.length})
+                        </button>
+                        {uniqueTags.map((tag) => (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() => {
+                              onSelectTag(tag);
+                              setCurrentPage(1);
+                            }}
+                            className={`rounded-md px-2 py-0.5 text-[11px] font-medium cursor-pointer ${
+                              selectedTag.toLowerCase() === tag.toLowerCase()
+                                ? "bg-slate-900 text-white"
+                                : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                            }`}
+                          >
+                            #{tag} ({getTagCount(tag)})
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsFilterOpen(false)}
+                      className="mt-4 w-full rounded-xl bg-slate-900 py-2 text-xs font-semibold text-white hover:bg-slate-800 cursor-pointer shadow-xs transition"
+                    >
+                      Apply Filters
+                    </button>
                   </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setIsFilterOpen(false)}
-                  className="mt-4 w-full rounded-lg bg-neutral-900 py-1.5 text-xs font-semibold text-white hover:bg-neutral-800 cursor-pointer"
-                >
-                  Apply Filters
-                </button>
+                )}
               </div>
-            )}
+            </div>
           </div>
-        </div>
-      </div>
-    )}
+        )}
 
-        {/* Event Cards List (Matches horizontal card list in screenshot) */}
+        {/* Event Cards List */}
         <div className="space-y-3 pt-2">
           {paginatedEvents.length === 0 ? (
-            <div className="rounded-2xl border border-neutral-200 bg-white p-12 text-center shadow-xs">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-neutral-100 text-xl">
-                📅
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-6 sm:p-12 text-center shadow-xs">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-500">
+                <CalendarX2 className="h-7 w-7" />
               </div>
-              <h3 className="mt-3 text-sm font-semibold text-neutral-900">
+              <h3 className="mt-3.5 text-base font-bold text-slate-900">
                 {isSearching
                   ? `No events matching "${activeSearch}" found`
                   : `No ${activeTab.toLowerCase()} events found`}
               </h3>
-              <p className="mt-1 text-xs text-neutral-500">
+              <p className="mt-1 text-xs sm:text-sm text-slate-500 max-w-sm mx-auto">
                 {isSearching
-                  ? `No upcoming, ongoing, or past events matched your search query.`
+                  ? `Try searching with different keywords or clear your search.`
                   : `There are currently no events under "${activeTab}" matching your filters.`}
               </p>
-              <div className="mt-4 flex justify-center gap-2">
+              <div className="mt-5 flex justify-center gap-2.5">
                 {(selectedTag !== "All" || activeSearch || effectiveEventType !== "All") && (
                   <button
                     type="button"
@@ -580,7 +692,7 @@ export default function DashboardOverview({
                       handleSearchChange("");
                       setSearchStatusFilter("All");
                     }}
-                    className="rounded-xl border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 cursor-pointer"
+                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer shadow-2xs"
                   >
                     Clear Filters
                   </button>
@@ -588,7 +700,7 @@ export default function DashboardOverview({
                 <button
                   type="button"
                   onClick={onOpenCreateModal}
-                  className="rounded-xl bg-neutral-900 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-neutral-800 cursor-pointer"
+                  className="rounded-xl bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 text-xs font-semibold shadow-xs hover:shadow cursor-pointer transition"
                 >
                   + Create Event
                 </button>
@@ -610,19 +722,19 @@ export default function DashboardOverview({
           )}
         </div>
 
-        {/* 4. Pagination & Stats Footer (Matches screenshot: < [1] [2] [3] > Showing 1-3 of 7 events) */}
+        {/* 4. Pagination & Stats Footer */}
         {totalItems > 0 && (
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-4 border-t border-neutral-200/80">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-4 border-t border-slate-200/80">
             <div className="flex items-center gap-1.5">
               {/* Previous page button */}
               <button
                 type="button"
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
-                className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50 disabled:opacity-40 disabled:pointer-events-none transition cursor-pointer"
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition cursor-pointer shadow-2xs"
                 aria-label="Previous Page"
               >
-                ‹
+                <ChevronLeft className="h-4 w-4" />
               </button>
 
               {/* Page numbers */}
@@ -633,10 +745,10 @@ export default function DashboardOverview({
                     key={pageNum}
                     type="button"
                     onClick={() => setCurrentPage(pageNum)}
-                    className={`flex h-9 w-9 items-center justify-center rounded-lg text-xs font-semibold transition cursor-pointer ${
+                    className={`flex h-9 w-9 items-center justify-center rounded-xl text-xs font-semibold transition cursor-pointer ${
                       isActive
-                        ? "bg-[#18181b] text-white shadow-xs"
-                        : "border border-neutral-200 bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
+                        ? "bg-slate-900 text-white shadow-xs"
+                        : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-2xs"
                     }`}
                   >
                     {pageNum}
@@ -649,32 +761,33 @@ export default function DashboardOverview({
                 type="button"
                 onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}
-                className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50 disabled:opacity-40 disabled:pointer-events-none transition cursor-pointer"
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition cursor-pointer shadow-2xs"
                 aria-label="Next Page"
               >
-                ›
+                <ChevronRight className="h-4 w-4" />
               </button>
             </div>
 
             {/* Showing count indicator */}
-            <p className="text-xs text-neutral-500 font-medium">
-              Showing {startItemNumber}-{endItemNumber} of {totalItems} events
+            <p className="text-xs text-slate-500 font-medium">
+              Showing <span className="font-semibold text-slate-800">{startItemNumber}-{endItemNumber}</span> of{" "}
+              <span className="font-semibold text-slate-800">{totalItems}</span> events
             </p>
           </div>
         )}
       </div>
 
-      {/* 5. Footer (Matches screenshot) */}
-      <footer className="mt-16 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-neutral-200 pt-6 text-xs text-neutral-500">
+      {/* 5. Footer */}
+      <footer className="mt-14 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-slate-200 pt-6 text-xs text-slate-500">
         <p>© 2026 Evently. All rights reserved.</p>
         <div className="flex items-center gap-5">
-          <a href="#privacy" className="hover:text-neutral-800 transition">
+          <a href="#privacy" className="hover:text-slate-800 transition">
             Privacy
           </a>
-          <a href="#terms" className="hover:text-neutral-800 transition">
+          <a href="#terms" className="hover:text-slate-800 transition">
             Terms
           </a>
-          <a href="#help" className="hover:text-neutral-800 transition">
+          <a href="#help" className="hover:text-slate-800 transition">
             Help
           </a>
         </div>

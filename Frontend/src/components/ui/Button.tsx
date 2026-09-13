@@ -5,6 +5,7 @@ interface ButtonProps {
   fullWidth?: boolean;
   disabled?: boolean;
   onClick?: () => void;
+  className?: string;
 }
 
 function Button({
@@ -14,15 +15,18 @@ function Button({
   fullWidth = false,
   disabled = false,
   onClick,
+  className = "",
 }: ButtonProps) {
   const baseStyles =
-    "rounded-[10px] px-4 py-3 text-sm font-semibold transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50";
+    "inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer";
 
   const variants = {
-    primary: "bg-red-500 text-white hover:bg-red-600",
+    primary:
+      "bg-rose-600 text-white hover:bg-rose-700 shadow-sm shadow-rose-600/20",
     secondary:
-      "border border-neutral-300 bg-white text-neutral-800 hover:bg-neutral-50",
-    danger: "bg-red-600 text-white hover:bg-red-700",
+      "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-2xs",
+    danger:
+      "bg-rose-600 text-white hover:bg-rose-700 shadow-sm shadow-rose-600/20",
   };
 
   return (
@@ -32,7 +36,7 @@ function Button({
       onClick={onClick}
       className={`${baseStyles} ${variants[variant]} ${
         fullWidth ? "w-full" : ""
-      }`}
+      } ${className}`}
     >
       {children}
     </button>
