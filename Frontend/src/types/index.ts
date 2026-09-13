@@ -40,3 +40,20 @@ export type EventSortOption =
   | "popularity"
   | "creation_time"
   | "relevance";
+
+export interface PaginationMeta {
+  page: number;
+  limit: number;
+  totalItems: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
+}
+
+export interface StatusCounts {
+  all: number;
+  upcoming: number;
+  ongoing: number;
+  past: number;
+}
+

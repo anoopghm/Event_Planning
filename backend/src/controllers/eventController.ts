@@ -3,6 +3,8 @@ import pool from "../models/db";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { AuthenticatedRequest } from "../middleware/auth";
 import { filterEventsByLevenshtein } from "../utils/searchUtils";
+import { logger } from "../utils/logger";
+import { optimizeCloudinaryUrl } from "../utils/cloudinary";
 
 export interface EventRow extends RowDataPacket {
   id: number;
@@ -11,6 +13,7 @@ export interface EventRow extends RowDataPacket {
   date: string;
   time: string;
   location: string | null;
+  image_url?: string | null;
   tags: unknown;
   status: string;
   created_by: number;
@@ -20,14 +23,16 @@ export interface EventRow extends RowDataPacket {
   creator_email?: string;
   yes_count?: number;
   no_count?: number;
-  user_presence?: "yes" | "no" | null;
+  maybe_count?: number;
+  user_presence?: "yes" | "no" | "maybe" | null;
 }
 
 interface PresenceAttendeeRow extends RowDataPacket {
+  event_id?: number;
   user_id: number;
   name: string;
   email: string;
-  status: "yes" | "no";
+  status: "yes" | "no" | "maybe";
   updated_at: Date | string;
 }
 
@@ -130,6 +135,7 @@ function formatEvent(row: EventRow, currentUserId?: number) {
     date: row.date,
     time: row.time,
     location: row.location || "",
+    imageUrl: row.image_url || null,
     tags: parseTags(row.tags),
     status: dynamicStatus,
     createdBy: row.created_by,
@@ -141,6 +147,7 @@ function formatEvent(row: EventRow, currentUserId?: number) {
     isCreator: currentUserId !== undefined ? row.created_by === currentUserId : false,
     rsvpSummary: {
       yes: Number(row.yes_count || 0),
+      maybe: Number(row.maybe_count || 0),
       no: Number(row.no_count || 0)
     },
     userPresence: row.user_presence || null,
@@ -155,6 +162,8 @@ function formatEvent(row: EventRow, currentUserId?: number) {
  */
 export async function createEvent(req: AuthenticatedRequest, res: Response, next?: NextFunction) {
   const { title, description, date, time, location, status } = req.body;
+  const rawImage = req.body.imageUrl || req.body.image_url || null;
+  const imageUrl = optimizeCloudinaryUrl(rawImage);
   const tags = normalizeTags(req.body.tags);
   const userId = req.user?.id;
 
@@ -164,14 +173,15 @@ export async function createEvent(req: AuthenticatedRequest, res: Response, next
 
   try {
     const [result] = await pool.execute<ResultSetHeader>(
-      `INSERT INTO events (title, description, date, time, location, tags, status, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO events (title, description, date, time, location, image_url, tags, status, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         title.trim(),
         description ? description.trim() : "",
         date.trim(),
         time.trim(),
         location ? location.trim() : null,
+        imageUrl,
         JSON.stringify(tags),
         status ? status.trim() : "Upcoming",
         userId
@@ -191,13 +201,15 @@ export async function createEvent(req: AuthenticatedRequest, res: Response, next
 
     const createdEvent = formatEvent(rows[0], userId);
 
+    logger.info(`Event created successfully [eventId: ${eventId}, title: "${title.trim()}", creatorId: ${userId}]`);
+
     return res.status(201).json({
       ok: true,
       message: "Event created successfully",
       event: createdEvent
     });
   } catch (err) {
-    console.error("Create event error:", err);
+    logger.error("Create event error:", err);
     if (next) return next(err);
     return res.status(500).json({ message: "Internal server error" });
   }
@@ -209,7 +221,7 @@ export async function createEvent(req: AuthenticatedRequest, res: Response, next
  */
 export async function getEvents(req: AuthenticatedRequest, res: Response, next?: NextFunction) {
   const currentUserId = req.user?.id;
-  const { tag, search, status, creator, sort, sortBy, order } = req.query;
+  const { tag, search, status, creator, sort, sortBy, order, page, limit } = req.query;
 
   try {
     let query = `
@@ -220,6 +232,7 @@ export async function getEvents(req: AuthenticatedRequest, res: Response, next?:
         e.date,
         e.time,
         e.location,
+        e.image_url,
         e.tags,
         e.status,
         e.created_by,
@@ -228,7 +241,8 @@ export async function getEvents(req: AuthenticatedRequest, res: Response, next?:
         u.name AS creator_name,
         u.email AS creator_email,
         COALESCE(SUM(CASE WHEN p.status = 'yes' THEN 1 ELSE 0 END), 0) AS yes_count,
-        COALESCE(SUM(CASE WHEN p.status = 'no' THEN 1 ELSE 0 END), 0) AS no_count
+        COALESCE(SUM(CASE WHEN p.status = 'no' THEN 1 ELSE 0 END), 0) AS no_count,
+        COALESCE(SUM(CASE WHEN p.status = 'maybe' THEN 1 ELSE 0 END), 0) AS maybe_count
         ${currentUserId ? `, MAX(CASE WHEN p.user_id = ${Number(currentUserId)} THEN p.status ELSE NULL END) AS user_presence` : ""}
       FROM events e
       JOIN users u ON e.created_by = u.id
@@ -237,11 +251,6 @@ export async function getEvents(req: AuthenticatedRequest, res: Response, next?:
 
     const whereConditions: string[] = [];
     const params: any[] = [];
-
-    if (!search && status && typeof status === "string") {
-      whereConditions.push("e.status = ?");
-      params.push(status.trim());
-    }
 
     if (creator) {
       if (creator === "me" && currentUserId) {
@@ -257,72 +266,173 @@ export async function getEvents(req: AuthenticatedRequest, res: Response, next?:
       query += ` WHERE ${whereConditions.join(" AND ")}`;
     }
 
-    const effectiveSort = (sort || sortBy || "event_time").toString().toLowerCase().trim();
-    const effectiveOrder = (order || "asc").toString().toLowerCase().trim() === "desc" ? "DESC" : "ASC";
-
-    let orderByClause = "ORDER BY e.date ASC, e.time ASC";
-    if (effectiveSort === "popularity") {
-      orderByClause = "ORDER BY yes_count DESC, no_count DESC, e.date ASC";
-    } else if (effectiveSort === "creation_time" || effectiveSort === "created_at") {
-      orderByClause = `ORDER BY e.created_at ${effectiveOrder === "ASC" ? "ASC" : "DESC"}`;
-    } else if (effectiveSort === "event_time" || effectiveSort === "time") {
-      orderByClause = `ORDER BY e.date ${effectiveOrder}, e.time ${effectiveOrder}`;
-    }
-
     query += `
       GROUP BY e.id, u.id
-      ${orderByClause}
+      ORDER BY e.date ASC, e.time ASC
     `;
 
     const [rows] = await pool.execute<EventRow[]>(query, params);
 
-    let events = rows.map((row) => formatEvent(row, currentUserId));
+    // Map rows into formatted events with dynamic real-time status
+    const allFormattedEvents = rows.map((row) => formatEvent(row, currentUserId));
 
-    // If filtering by tag (tags are JSON array)
-    if (tag && typeof tag === "string") {
+    // Fetch attendee records for all returned events to populate the attendees list
+    if (allFormattedEvents.length > 0) {
+      const eventIds = allFormattedEvents.map((e) => e.id);
+      const [attendeeRows] = await pool.query<PresenceAttendeeRow[]>(
+        `SELECT p.event_id, p.user_id, u.name, u.email, p.status, p.updated_at
+         FROM event_presence p
+         JOIN users u ON p.user_id = u.id
+         WHERE p.event_id IN (?)
+         ORDER BY p.updated_at DESC`,
+        [eventIds]
+      );
+
+      const attendeesByEvent = new Map<number, { yes: any[]; maybe: any[]; no: any[] }>();
+      for (const att of attendeeRows) {
+        const eid = Number(att.event_id);
+        if (!attendeesByEvent.has(eid)) {
+          attendeesByEvent.set(eid, { yes: [], maybe: [], no: [] });
+        }
+        const group = attendeesByEvent.get(eid)!;
+        const attendeeObj = {
+          id: att.user_id,
+          name: att.name,
+          email: att.email,
+          updatedAt: att.updated_at
+        };
+        if (att.status === "yes") group.yes.push(attendeeObj);
+        else if (att.status === "maybe") group.maybe.push(attendeeObj);
+        else if (att.status === "no") group.no.push(attendeeObj);
+      }
+
+      allFormattedEvents.forEach((evt) => {
+        (evt as any).attendees = attendeesByEvent.get(Number(evt.id)) || { yes: [], maybe: [], no: [] };
+      });
+    }
+
+    // Calculate status breakdown counts across all events (or creator events)
+    let upcomingCount = 0;
+    let ongoingCount = 0;
+    let pastCount = 0;
+    const tagSet = new Set<string>();
+
+    allFormattedEvents.forEach((evt) => {
+      if (evt.status === "Ongoing") ongoingCount++;
+      else if (evt.status === "Past" || (evt.status as string) === "Finished") pastCount++;
+      else upcomingCount++;
+
+      if (Array.isArray(evt.tags)) {
+        evt.tags.forEach((t) => {
+          if (t && typeof t === "string" && t.trim()) {
+            tagSet.add(t.trim());
+          }
+        });
+      }
+    });
+
+    const statusCounts = {
+      all: allFormattedEvents.length,
+      upcoming: upcomingCount,
+      ongoing: ongoingCount,
+      past: pastCount
+    };
+    const availableTags = Array.from(tagSet);
+
+    let filteredEvents = allFormattedEvents;
+
+    // 1. Filter by Tag (if specified and not "All")
+    if (tag && typeof tag === "string" && tag.trim() !== "" && tag.trim().toLowerCase() !== "all") {
       const targetTag = tag.trim().toLowerCase();
-      events = events.filter((evt) =>
+      filteredEvents = filteredEvents.filter((evt) =>
         evt.tags.some((t) => t.toLowerCase() === targetTag)
       );
     }
 
-    // Levenshtein fuzzy search across title, location, description, and tags
-    // Searches across all Upcoming, Ongoing, and Past events
-    if (search && typeof search === "string" && search.trim() !== "") {
-      events = filterEventsByLevenshtein(events, search.trim());
-
-      // If user specified sort option while searching
-      if (effectiveSort === "popularity") {
-        events.sort((a, b) => b.rsvpSummary.yes - a.rsvpSummary.yes);
-      } else if (effectiveSort === "creation_time" || effectiveSort === "created_at") {
-        events.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      } else if (effectiveSort === "event_time" || effectiveSort === "time") {
-        events.sort((a, b) => {
-          const diff = new Date(`${a.date}T${a.time || "00:00"}`).getTime() - new Date(`${b.date}T${b.time || "00:00"}`).getTime();
-          return effectiveOrder === "DESC" ? -diff : diff;
-        });
-      }
-
-      // If status filter was also explicitly requested along with search
-      if (status && typeof status === "string" && status.trim() !== "" && status.toLowerCase() !== "all") {
-        const targetStatus = status.trim().toLowerCase();
-        events = events.filter((evt) => {
-          const s = evt.status.toLowerCase();
-          if (targetStatus === "past" || targetStatus === "finished") {
-            return s === "past" || s === "finished";
-          }
-          return s === targetStatus;
-        });
-      }
+    // 2. Filter by Status (uses dynamic real-time status)
+    if (status && typeof status === "string" && status.trim() !== "" && status.trim().toLowerCase() !== "all") {
+      const targetStatus = status.trim().toLowerCase();
+      filteredEvents = filteredEvents.filter((evt) => {
+        const s = evt.status.toLowerCase();
+        if (targetStatus === "past" || targetStatus === "finished") {
+          return s === "past" || s === "finished";
+        }
+        return s === targetStatus;
+      });
     }
+
+    // 3. Filter by Search Query (Levenshtein fuzzy matching)
+    const isSearching = Boolean(search && typeof search === "string" && search.trim().length > 0);
+    if (isSearching) {
+      filteredEvents = filterEventsByLevenshtein(filteredEvents, (search as string).trim());
+    }
+
+    // 4. Sorting
+    const sortParam = (sort || sortBy || "").toString().toLowerCase().trim();
+    const orderParam = (order || "asc").toString().toLowerCase().trim() === "desc" ? "DESC" : "ASC";
+
+    if (sortParam === "popularity") {
+      filteredEvents.sort((a, b) => b.rsvpSummary.yes - a.rsvpSummary.yes);
+    } else if (sortParam === "creation_time" || sortParam === "created_at") {
+      filteredEvents.sort((a, b) => {
+        const diff = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        return orderParam === "DESC" ? diff : -diff;
+      });
+    } else if (sortParam === "event_time_desc") {
+      filteredEvents.sort((a, b) => {
+        const diff = new Date(`${a.date}T${a.time || "00:00"}`).getTime() - new Date(`${b.date}T${b.time || "00:00"}`).getTime();
+        return -diff;
+      });
+    } else if (sortParam === "event_time_asc") {
+      filteredEvents.sort((a, b) => {
+        const diff = new Date(`${a.date}T${a.time || "00:00"}`).getTime() - new Date(`${b.date}T${b.time || "00:00"}`).getTime();
+        return diff;
+      });
+    } else if (!isSearching) {
+      // Default chronological ordering when not searching
+      filteredEvents.sort((a, b) => {
+        const diff = new Date(`${a.date}T${a.time || "00:00"}`).getTime() - new Date(`${b.date}T${b.time || "00:00"}`).getTime();
+        return orderParam === "DESC" ? -diff : diff;
+      });
+    }
+
+    // 5. Server-Side Pagination
+    const totalItems = filteredEvents.length;
+    const isAllLimit = limit === "all" || limit === "0";
+
+    const pageNumber = Math.max(1, parseInt(String(page || 1), 10) || 1);
+    const pageSize = isAllLimit
+      ? totalItems
+      : Math.max(1, Math.min(100, parseInt(String(limit || 4), 10) || 4));
+
+    const totalPages = Math.max(1, Math.ceil(totalItems / (pageSize || 1)));
+    const offset = (pageNumber - 1) * pageSize;
+    const paginatedEvents = isAllLimit
+      ? filteredEvents
+      : filteredEvents.slice(offset, offset + pageSize);
+
+    logger.info(
+      `Events queried [page: ${pageNumber}/${totalPages}, limit: ${pageSize}, returned: ${paginatedEvents.length}, total: ${totalItems}, filters: { status: ${status || "All"}, tag: ${tag || "All"}, search: ${search || "-"} }]`
+    );
 
     return res.json({
       ok: true,
-      count: events.length,
-      events
+      events: paginatedEvents,
+      count: paginatedEvents.length,
+      total: totalItems,
+      pagination: {
+        page: pageNumber,
+        limit: pageSize,
+        totalItems,
+        totalPages,
+        hasNextPage: pageNumber < totalPages,
+        hasPrevPage: pageNumber > 1
+      },
+      counts: statusCounts,
+      tags: availableTags
     });
   } catch (err) {
-    console.error("Get events error:", err);
+    logger.error("Get events error:", err);
     if (next) return next(err);
     return res.status(500).json({ message: "Internal server error" });
   }
@@ -337,6 +447,7 @@ export async function getEventById(req: AuthenticatedRequest, res: Response, nex
   const currentUserId = req.user?.id;
 
   if (isNaN(eventId)) {
+    logger.warn(`Get event failed: invalid event ID parameter [param: "${req.params.id}"]`);
     return res.status(400).json({ message: "Invalid event ID" });
   }
 
@@ -349,6 +460,7 @@ export async function getEventById(req: AuthenticatedRequest, res: Response, nex
         e.date,
         e.time,
         e.location,
+        e.image_url,
         e.tags,
         e.status,
         e.created_by,
@@ -357,7 +469,8 @@ export async function getEventById(req: AuthenticatedRequest, res: Response, nex
         u.name AS creator_name,
         u.email AS creator_email,
         COALESCE(SUM(CASE WHEN p.status = 'yes' THEN 1 ELSE 0 END), 0) AS yes_count,
-        COALESCE(SUM(CASE WHEN p.status = 'no' THEN 1 ELSE 0 END), 0) AS no_count
+        COALESCE(SUM(CASE WHEN p.status = 'no' THEN 1 ELSE 0 END), 0) AS no_count,
+        COALESCE(SUM(CASE WHEN p.status = 'maybe' THEN 1 ELSE 0 END), 0) AS maybe_count
         ${currentUserId ? `, MAX(CASE WHEN p.user_id = ${Number(currentUserId)} THEN p.status ELSE NULL END) AS user_presence` : ""}
       FROM events e
       JOIN users u ON e.created_by = u.id
@@ -368,6 +481,7 @@ export async function getEventById(req: AuthenticatedRequest, res: Response, nex
     );
 
     if (rows.length === 0) {
+      logger.warn(`Get event failed: event not found [eventId: ${eventId}]`);
       return res.status(404).json({ message: "Event not found" });
     }
 
@@ -385,12 +499,17 @@ export async function getEventById(req: AuthenticatedRequest, res: Response, nex
       yes: attendeeRows
         .filter((a) => a.status === "yes")
         .map((a) => ({ id: a.user_id, name: a.name, email: a.email, updatedAt: a.updated_at })),
+      maybe: attendeeRows
+        .filter((a) => a.status === "maybe")
+        .map((a) => ({ id: a.user_id, name: a.name, email: a.email, updatedAt: a.updated_at })),
       no: attendeeRows
         .filter((a) => a.status === "no")
         .map((a) => ({ id: a.user_id, name: a.name, email: a.email, updatedAt: a.updated_at }))
     };
 
     const formatted = formatEvent(rows[0], currentUserId);
+
+    logger.info(`Event details retrieved [eventId: ${eventId}, title: "${rows[0].title}"]`);
 
     return res.json({
       ok: true,
@@ -400,7 +519,7 @@ export async function getEventById(req: AuthenticatedRequest, res: Response, nex
       }
     });
   } catch (err) {
-    console.error("Get event by ID error:", err);
+    logger.error(`Get event by ID error [eventId: ${eventId}]:`, err);
     if (next) return next(err);
     return res.status(500).json({ message: "Internal server error" });
   }
@@ -425,11 +544,12 @@ export async function updateEvent(req: AuthenticatedRequest, res: Response, next
   try {
     // 1. Fetch the event to verify existence and check creator ownership
     const [existingRows] = await pool.execute<EventRow[]>(
-      "SELECT id, created_by, title, description, date, time, location, tags, status FROM events WHERE id = ?",
+      "SELECT id, created_by, title, description, date, time, location, image_url, tags, status FROM events WHERE id = ?",
       [eventId]
     );
 
     if (existingRows.length === 0) {
+      logger.warn(`Update event failed: event not found [eventId: ${eventId}]`);
       return res.status(404).json({ message: "Event not found" });
     }
 
@@ -437,6 +557,7 @@ export async function updateEvent(req: AuthenticatedRequest, res: Response, next
 
     // 2. Authorization check: ONLY creator can modify
     if (event.created_by !== currentUserId) {
+      logger.warn(`Update event forbidden: user ${currentUserId} is not creator of event ${eventId} (owner: ${event.created_by})`);
       return res.status(403).json({
         message: "You are not authorized to modify this event. Only the event creator can modify it."
       });
@@ -444,18 +565,20 @@ export async function updateEvent(req: AuthenticatedRequest, res: Response, next
 
     // 3. Prepare updated fields (allow partial or full updates)
     const { title, description, date, time, location, status } = req.body;
+    const rawImage = req.body.imageUrl !== undefined ? req.body.imageUrl : req.body.image_url;
 
     const newTitle = title !== undefined ? String(title).trim() : event.title;
     const newDescription = description !== undefined ? String(description).trim() : (event.description || "");
     const newDate = date !== undefined ? String(date).trim() : event.date;
     const newTime = time !== undefined ? String(time).trim() : event.time;
     const newLocation = location !== undefined ? (location ? String(location).trim() : null) : event.location;
+    const newImageUrl = rawImage !== undefined ? optimizeCloudinaryUrl(rawImage) : (event.image_url || null);
     const newStatus = status !== undefined ? String(status).trim() : event.status;
     const newTags = req.body.tags !== undefined ? normalizeTags(req.body.tags) : parseTags(event.tags);
 
     await pool.execute(
       `UPDATE events
-       SET title = ?, description = ?, date = ?, time = ?, location = ?, tags = ?, status = ?
+       SET title = ?, description = ?, date = ?, time = ?, location = ?, image_url = ?, tags = ?, status = ?
        WHERE id = ?`,
       [
         newTitle,
@@ -463,6 +586,7 @@ export async function updateEvent(req: AuthenticatedRequest, res: Response, next
         newDate,
         newTime,
         newLocation,
+        newImageUrl ?? null,
         JSON.stringify(newTags),
         newStatus,
         eventId
@@ -474,6 +598,7 @@ export async function updateEvent(req: AuthenticatedRequest, res: Response, next
       `SELECT e.*, u.name AS creator_name, u.email AS creator_email,
          COALESCE(SUM(CASE WHEN p.status = 'yes' THEN 1 ELSE 0 END), 0) AS yes_count,
          COALESCE(SUM(CASE WHEN p.status = 'no' THEN 1 ELSE 0 END), 0) AS no_count,
+         COALESCE(SUM(CASE WHEN p.status = 'maybe' THEN 1 ELSE 0 END), 0) AS maybe_count,
          MAX(CASE WHEN p.user_id = ? THEN p.status ELSE NULL END) AS user_presence
        FROM events e
        JOIN users u ON e.created_by = u.id
@@ -483,13 +608,15 @@ export async function updateEvent(req: AuthenticatedRequest, res: Response, next
       [currentUserId, eventId]
     );
 
+    logger.info(`Event updated successfully [eventId: ${eventId}, updatedBy: ${currentUserId}]`);
+
     return res.json({
       ok: true,
       message: "Event updated successfully",
       event: formatEvent(updatedRows[0], currentUserId)
     });
   } catch (err) {
-    console.error("Update event error:", err);
+    logger.error(`Update event error [eventId: ${eventId}]:`, err);
     if (next) return next(err);
     return res.status(500).json({ message: "Internal server error" });
   }
@@ -504,6 +631,7 @@ export async function deleteEvent(req: AuthenticatedRequest, res: Response, next
   const currentUserId = req.user?.id;
 
   if (isNaN(eventId)) {
+    logger.warn(`Delete event failed: invalid event ID parameter [param: "${req.params.id}"]`);
     return res.status(400).json({ message: "Invalid event ID" });
   }
 
@@ -519,6 +647,7 @@ export async function deleteEvent(req: AuthenticatedRequest, res: Response, next
     );
 
     if (existingRows.length === 0) {
+      logger.warn(`Delete event failed: event not found [eventId: ${eventId}]`);
       return res.status(404).json({ message: "Event not found" });
     }
 
@@ -526,6 +655,7 @@ export async function deleteEvent(req: AuthenticatedRequest, res: Response, next
 
     // 2. Authorization check: ONLY creator can delete
     if (event.created_by !== currentUserId) {
+      logger.warn(`Delete event forbidden: user ${currentUserId} is not creator of event ${eventId} (owner: ${event.created_by})`);
       return res.status(403).json({
         message: "You are not authorized to delete this event. Only the event creator can delete it."
       });
@@ -534,13 +664,15 @@ export async function deleteEvent(req: AuthenticatedRequest, res: Response, next
     // 3. Delete the event (cascades to event_presence table)
     await pool.execute("DELETE FROM events WHERE id = ?", [eventId]);
 
+    logger.info(`Event deleted successfully [eventId: ${eventId}, title: "${event.title}", deletedBy: ${currentUserId}]`);
+
     return res.json({
       ok: true,
       message: `Event "${event.title}" deleted successfully`,
       deletedEventId: eventId
     });
   } catch (err) {
-    console.error("Delete event error:", err);
+    logger.error(`Delete event error [eventId: ${eventId}]:`, err);
     if (next) return next(err);
     return res.status(500).json({ message: "Internal server error" });
   }
@@ -555,6 +687,7 @@ export async function markPresence(req: AuthenticatedRequest, res: Response, nex
   const currentUserId = req.user?.id;
 
   if (isNaN(eventId)) {
+    logger.warn(`Mark presence failed: invalid event ID [param: "${req.params.id}"]`);
     return res.status(400).json({ message: "Invalid event ID" });
   }
 
@@ -564,9 +697,10 @@ export async function markPresence(req: AuthenticatedRequest, res: Response, nex
 
   const rawStatus = (req.body.status || req.body.presence || "").toString().toLowerCase().trim();
 
-  if (rawStatus !== "yes" && rawStatus !== "no") {
+  if (rawStatus !== "yes" && rawStatus !== "no" && rawStatus !== "maybe") {
+    logger.warn(`Mark presence rejected: invalid status "${rawStatus}" [eventId: ${eventId}, userId: ${currentUserId}]`);
     return res.status(400).json({
-      message: "Presence status must be either 'yes' or 'no'"
+      message: "Presence status must be 'yes', 'no', or 'maybe'"
     });
   }
 
@@ -578,6 +712,7 @@ export async function markPresence(req: AuthenticatedRequest, res: Response, nex
     );
 
     if (eventRows.length === 0) {
+      logger.warn(`Mark presence failed: event not found [eventId: ${eventId}]`);
       return res.status(404).json({ message: "Event not found" });
     }
 
@@ -593,7 +728,8 @@ export async function markPresence(req: AuthenticatedRequest, res: Response, nex
     const [summaryRows] = await pool.execute<RowDataPacket[]>(
       `SELECT 
          COALESCE(SUM(CASE WHEN status = 'yes' THEN 1 ELSE 0 END), 0) AS yes_count,
-         COALESCE(SUM(CASE WHEN status = 'no' THEN 1 ELSE 0 END), 0) AS no_count
+         COALESCE(SUM(CASE WHEN status = 'no' THEN 1 ELSE 0 END), 0) AS no_count,
+         COALESCE(SUM(CASE WHEN status = 'maybe' THEN 1 ELSE 0 END), 0) AS maybe_count
        FROM event_presence
        WHERE event_id = ?`,
       [eventId]
@@ -601,6 +737,9 @@ export async function markPresence(req: AuthenticatedRequest, res: Response, nex
 
     const yesCount = Number(summaryRows[0]?.yes_count || 0);
     const noCount = Number(summaryRows[0]?.no_count || 0);
+    const maybeCount = Number(summaryRows[0]?.maybe_count || 0);
+
+    logger.info(`Presence marked [eventId: ${eventId}, userId: ${currentUserId}, status: "${rawStatus}", totals: { yes: ${yesCount}, maybe: ${maybeCount}, no: ${noCount} }]`);
 
     return res.json({
       ok: true,
@@ -609,11 +748,12 @@ export async function markPresence(req: AuthenticatedRequest, res: Response, nex
       presence: rawStatus,
       rsvpSummary: {
         yes: yesCount,
+        maybe: maybeCount,
         no: noCount
       }
     });
   } catch (err) {
-    console.error("Mark presence error:", err);
+    logger.error(`Mark presence error [eventId: ${eventId}, userId: ${currentUserId}]:`, err);
     if (next) return next(err);
     return res.status(500).json({ message: "Internal server error" });
   }
@@ -627,6 +767,7 @@ export async function getPresence(req: Request, res: Response, next?: NextFuncti
   const eventId = Number(req.params.id);
 
   if (isNaN(eventId)) {
+    logger.warn(`Get presence failed: invalid event ID [param: "${req.params.id}"]`);
     return res.status(400).json({ message: "Invalid event ID" });
   }
 
@@ -637,6 +778,7 @@ export async function getPresence(req: Request, res: Response, next?: NextFuncti
     );
 
     if (eventRows.length === 0) {
+      logger.warn(`Get presence failed: event not found [eventId: ${eventId}]`);
       return res.status(404).json({ message: "Event not found" });
     }
 
@@ -653,9 +795,15 @@ export async function getPresence(req: Request, res: Response, next?: NextFuncti
       .filter((a) => a.status === "yes")
       .map((a) => ({ id: a.user_id, name: a.name, email: a.email, updatedAt: a.updated_at }));
 
+    const maybeAttendees = attendeeRows
+      .filter((a) => a.status === "maybe")
+      .map((a) => ({ id: a.user_id, name: a.name, email: a.email, updatedAt: a.updated_at }));
+
     const noAttendees = attendeeRows
       .filter((a) => a.status === "no")
       .map((a) => ({ id: a.user_id, name: a.name, email: a.email, updatedAt: a.updated_at }));
+
+    logger.info(`Presence retrieved [eventId: ${eventId}, yes: ${yesAttendees.length}, maybe: ${maybeAttendees.length}, no: ${noAttendees.length}]`);
 
     return res.json({
       ok: true,
@@ -663,15 +811,17 @@ export async function getPresence(req: Request, res: Response, next?: NextFuncti
       eventTitle: eventRows[0].title,
       rsvpSummary: {
         yes: yesAttendees.length,
+        maybe: maybeAttendees.length,
         no: noAttendees.length
       },
       attendees: {
         yes: yesAttendees,
+        maybe: maybeAttendees,
         no: noAttendees
       }
     });
   } catch (err) {
-    console.error("Get presence error:", err);
+    logger.error(`Get presence error [eventId: ${eventId}]:`, err);
     if (next) return next(err);
     return res.status(500).json({ message: "Internal server error" });
   }

@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import Dashboard from "./pages/Dashboard";
+import VerifyEmail from "./pages/VerifyEmail";
 import ProtectedRoute from "./components/routes/ProtectedRoute";
 import PublicOnlyRoute from "./components/routes/PublicOnlyRoute";
 
@@ -32,6 +33,10 @@ function App() {
               <Signup />
             </PublicOnlyRoute>
           }
+        />
+        <Route
+          path="/verify-email"
+          element={<VerifyEmail />}
         />
 
         <Route

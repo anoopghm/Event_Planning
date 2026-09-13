@@ -61,7 +61,15 @@ router.post(
     body("status")
       .optional()
       .isString()
-      .withMessage("Status must be a string.")
+      .withMessage("Status must be a string."),
+    body("imageUrl")
+      .optional()
+      .isString()
+      .withMessage("Image URL must be a string."),
+    body("image_url")
+      .optional()
+      .isString()
+      .withMessage("Image URL must be a string.")
   ],
   validateRequest,
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
@@ -182,8 +190,8 @@ router.delete("/:id", requireAuth, async (req: AuthenticatedRequest, res: Respon
 const presenceValidation = [
   body().custom((value, { req }) => {
     const status = (req.body.status || req.body.presence || "").toString().toLowerCase().trim();
-    if (status !== "yes" && status !== "no") {
-      throw new Error("Presence status must be either 'yes' or 'no'.");
+    if (status !== "yes" && status !== "no" && status !== "maybe") {
+      throw new Error("Presence status must be either 'yes', 'no', or 'maybe'.");
     }
     return true;
   })

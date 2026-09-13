@@ -42,7 +42,10 @@ export default function EventCard({
 }: EventCardProps) {
   const isCreator = String(event.creatorId) === String(currentUser.id);
   const userAttendee = event.attendees?.find(
-    (a) => String(a.userId) === String(currentUser.id)
+    (a) =>
+      String(a.userId) === String(currentUser.id) ||
+      a.userId === "currentUser" ||
+      (currentUser.email && a.userEmail === currentUser.email)
   );
 
   // Status dynamically computed from meeting timings
