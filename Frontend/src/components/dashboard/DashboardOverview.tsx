@@ -10,7 +10,6 @@ import {
   CalendarX2,
   ChevronLeft,
   ChevronRight,
-  Sparkles,
   RotateCcw,
 } from "lucide-react";
 import StatsGrid from "./StatsGrid";
@@ -18,12 +17,12 @@ import EventCard from "../events/EventCard";
 import { getEffectiveEventStatus } from "../../utils/eventUtils";
 import { matchEventByLevenshtein } from "../../utils/searchUtils";
 import { sortEvents } from "../../utils/sortUtils";
-import type { EventItem, AuthUser, EventSortOption } from "../../types";
+import type { EventItem, AuthUser, EventSortOption, PaginationMeta, StatusCounts } from "../../types";
 
 interface DashboardOverviewProps {
   user: AuthUser;
   events: EventItem[];
-  filteredEvents: EventItem[];
+  filteredEvents?: EventItem[];
   uniqueTags: string[];
   selectedTag: string;
   onSelectTag: (tag: string) => void;
@@ -38,6 +37,16 @@ interface DashboardOverviewProps {
   onViewDetails: (event: EventItem) => void;
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
+
+  // Server-side pagination & filter extensions
+  pagination?: PaginationMeta;
+  onPageChange?: (page: number) => void;
+  activeTab?: "All" | "Ongoing" | "Upcoming" | "Past";
+  onTabChange?: (tab: "All" | "Ongoing" | "Upcoming" | "Past") => void;
+  sortBy?: EventSortOption;
+  onSortChange?: (sort: EventSortOption) => void;
+  counts?: StatusCounts;
+  isLoading?: boolean;
 }
 
 export default function DashboardOverview({
@@ -57,16 +66,48 @@ export default function DashboardOverview({
   onViewDetails,
   searchQuery,
   onSearchChange,
+  pagination,
+  onPageChange,
+  activeTab: activeTabProp,
+  onTabChange,
+  sortBy: sortByProp,
+  onSortChange,
+  counts: countsProp,
+  isLoading = false,
 }: DashboardOverviewProps) {
   // Tabs: "All", "Upcoming", "Ongoing", "Past"
-  const [activeTab, setActiveTab] = useState<"All" | "Ongoing" | "Upcoming" | "Past">("Upcoming");
+  const [localActiveTab, setLocalActiveTab] = useState<"All" | "Ongoing" | "Upcoming" | "Past">("Upcoming");
   const [searchStatusFilter, setSearchStatusFilter] = useState<"All" | "Ongoing" | "Upcoming" | "Past">("All");
-  const [sortBy, setSortBy] = useState<EventSortOption>("event_time_asc");
+  const [localSortBy, setLocalSortBy] = useState<EventSortOption>("event_time_asc");
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [localSearchQuery, setLocalSearchQuery] = useState("");
   const [localEventType, setLocalEventType] = useState<string>("All");
-  const [currentPage, setCurrentPage] = useState(1);
+  const [localCurrentPage, setLocalCurrentPage] = useState(1);
   const itemsPerPage = 4;
+
+  const activeTab = activeTabProp !== undefined ? activeTabProp : localActiveTab;
+  const sortBy = sortByProp !== undefined ? sortByProp : localSortBy;
+  const isServerPagination = Boolean(pagination);
+  const currentPage = isServerPagination ? pagination!.page : localCurrentPage;
+
+  const handleTabChange = (tab: "All" | "Ongoing" | "Upcoming" | "Past") => {
+    if (onTabChange) onTabChange(tab);
+    else setLocalActiveTab(tab);
+    if (onPageChange) onPageChange(1);
+    else setLocalCurrentPage(1);
+  };
+
+  const handleSortChange = (sort: EventSortOption) => {
+    if (onSortChange) onSortChange(sort);
+    else setLocalSortBy(sort);
+    if (onPageChange) onPageChange(1);
+    else setLocalCurrentPage(1);
+  };
+
+  const handlePageSelect = (page: number) => {
+    if (onPageChange) onPageChange(page);
+    else setLocalCurrentPage(page);
+  };
 
   const activeSearch = searchQuery !== undefined ? searchQuery : localSearchQuery;
   const handleSearchChange = onSearchChange || setLocalSearchQuery;
@@ -110,6 +151,14 @@ export default function DashboardOverview({
 
   // Status breakdown of search results
   const searchCounts = useMemo(() => {
+    if (countsProp && isSearching) {
+      return {
+        total: countsProp.all,
+        upcoming: countsProp.upcoming,
+        ongoing: countsProp.ongoing,
+        past: countsProp.past
+      };
+    }
     let upcoming = 0;
     let ongoing = 0;
     let past = 0;
@@ -120,10 +169,18 @@ export default function DashboardOverview({
       else upcoming++;
     });
     return { total: allMatchingSearchEvents.length, upcoming, ongoing, past };
-  }, [allMatchingSearchEvents]);
+  }, [allMatchingSearchEvents, countsProp, isSearching]);
 
   // Tab counts for normal browsing
   const tabCounts = useMemo(() => {
+    if (countsProp) {
+      return {
+        total: countsProp.all,
+        upcoming: countsProp.upcoming,
+        ongoing: countsProp.ongoing,
+        past: countsProp.past
+      };
+    }
     let upcoming = 0;
     let ongoing = 0;
     let past = 0;
@@ -134,10 +191,14 @@ export default function DashboardOverview({
       else upcoming++;
     });
     return { total: events.length, upcoming, ongoing, past };
-  }, [events]);
+  }, [events, countsProp]);
 
   // Filtered events
   const tabFilteredEvents = useMemo(() => {
+    if (isServerPagination) {
+      return events;
+    }
+
     if (isSearching) {
       let matched = allMatchingSearchEvents;
       if (searchStatusFilter !== "All") {
@@ -174,6 +235,7 @@ export default function DashboardOverview({
 
     return sortEvents(matched, sortBy, activeSearch);
   }, [
+    isServerPagination,
     events,
     isSearching,
     activeSearch,
@@ -185,17 +247,19 @@ export default function DashboardOverview({
     sortBy,
   ]);
 
-  const totalItems = tabFilteredEvents.length;
-  const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
+  const totalItems = isServerPagination ? pagination!.totalItems : tabFilteredEvents.length;
+  const totalPages = isServerPagination ? pagination!.totalPages : Math.max(1, Math.ceil(totalItems / itemsPerPage));
 
   // Current page slice
   const paginatedEvents = useMemo(() => {
+    if (isServerPagination) return events;
     const startIndex = (currentPage - 1) * itemsPerPage;
     return tabFilteredEvents.slice(startIndex, startIndex + itemsPerPage);
-  }, [tabFilteredEvents, currentPage, itemsPerPage]);
+  }, [isServerPagination, events, tabFilteredEvents, currentPage, itemsPerPage]);
 
-  const startItemNumber = totalItems === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
-  const endItemNumber = Math.min(currentPage * itemsPerPage, totalItems);
+  const limitUsed = isServerPagination ? pagination!.limit : itemsPerPage;
+  const startItemNumber = totalItems === 0 ? 0 : (currentPage - 1) * limitUsed + 1;
+  const endItemNumber = Math.min(currentPage * limitUsed, totalItems);
 
   return (
     <div className="space-y-7">
@@ -208,12 +272,6 @@ export default function DashboardOverview({
 
           <div className="relative z-10 flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
             <div className="max-w-2xl">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-0.5 text-xs font-medium text-slate-300 border border-white/10 backdrop-blur-sm">
-                  <Sparkles className="h-3.5 w-3.5 text-rose-400" />
-                  Workspace Overview
-                </span>
-              </div>
               <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight text-white">
                 Welcome back, {user.name}!
               </h1>
@@ -284,8 +342,7 @@ export default function DashboardOverview({
                 onClick={() => {
                   handleSearchChange("");
                   setSearchStatusFilter("All");
-                  setSortBy("event_time_asc");
-                  setCurrentPage(1);
+                  handleSortChange("event_time_asc");
                 }}
                 className="self-start inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-2xs transition cursor-pointer"
                 title="Back to Dashboard"
@@ -368,8 +425,7 @@ export default function DashboardOverview({
                   <select
                     value={sortBy}
                     onChange={(e) => {
-                      setSortBy(e.target.value as EventSortOption);
-                      setCurrentPage(1);
+                      handleSortChange(e.target.value as EventSortOption);
                     }}
                     className="w-full bg-transparent text-slate-800 font-semibold outline-none cursor-pointer text-xs"
                   >
@@ -386,8 +442,7 @@ export default function DashboardOverview({
                   onClick={() => {
                     handleSearchChange("");
                     setSearchStatusFilter("All");
-                    setSortBy("event_time_asc");
-                    setCurrentPage(1);
+                    handleSortChange("event_time_asc");
                   }}
                   className="shrink-0 inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:text-slate-900 transition cursor-pointer shadow-2xs"
                 >
@@ -404,7 +459,7 @@ export default function DashboardOverview({
                 type="button"
                 onClick={() => {
                   setSearchStatusFilter("All");
-                  setCurrentPage(1);
+                  handleTabChange("All");
                 }}
                 className={`shrink-0 rounded-lg px-3 py-1 text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
                   searchStatusFilter === "All"
@@ -419,7 +474,7 @@ export default function DashboardOverview({
                 type="button"
                 onClick={() => {
                   setSearchStatusFilter("Upcoming");
-                  setCurrentPage(1);
+                  handleTabChange("Upcoming");
                 }}
                 className={`shrink-0 inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
                   searchStatusFilter === "Upcoming"
@@ -435,7 +490,7 @@ export default function DashboardOverview({
                 type="button"
                 onClick={() => {
                   setSearchStatusFilter("Ongoing");
-                  setCurrentPage(1);
+                  handleTabChange("Ongoing");
                 }}
                 className={`shrink-0 inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
                   searchStatusFilter === "Ongoing"
@@ -451,7 +506,7 @@ export default function DashboardOverview({
                 type="button"
                 onClick={() => {
                   setSearchStatusFilter("Past");
-                  setCurrentPage(1);
+                  handleTabChange("Past");
                 }}
                 className={`shrink-0 inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
                   searchStatusFilter === "Past"
@@ -484,8 +539,7 @@ export default function DashboardOverview({
                     key={tab}
                     type="button"
                     onClick={() => {
-                      setActiveTab(tab);
-                      setCurrentPage(1);
+                      handleTabChange(tab);
                     }}
                     className={`flex items-center gap-1.5 rounded-lg px-3.5 sm:px-4 py-1.5 text-xs sm:text-sm font-semibold transition cursor-pointer ${
                       isActive
@@ -517,8 +571,7 @@ export default function DashboardOverview({
                 <select
                   value={sortBy}
                   onChange={(e) => {
-                    setSortBy(e.target.value as EventSortOption);
-                    setCurrentPage(1);
+                    handleSortChange(e.target.value as EventSortOption);
                   }}
                   className="bg-transparent text-slate-900 font-semibold outline-none cursor-pointer"
                 >
@@ -558,7 +611,7 @@ export default function DashboardOverview({
                           onSelectTag("All");
                           handleEventTypeChange("All");
                           handleSearchChange("");
-                          setSortBy("event_time_asc");
+                          handleSortChange("event_time_asc");
                           setIsFilterOpen(false);
                         }}
                         className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600 hover:underline cursor-pointer"
@@ -574,8 +627,7 @@ export default function DashboardOverview({
                       <select
                         value={sortBy}
                         onChange={(e) => {
-                          setSortBy(e.target.value as EventSortOption);
-                          setCurrentPage(1);
+                          handleSortChange(e.target.value as EventSortOption);
                         }}
                         className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:border-slate-900 cursor-pointer"
                       >
@@ -598,7 +650,7 @@ export default function DashboardOverview({
                               type="button"
                               onClick={() => {
                                 handleEventTypeChange(typeOption);
-                                setCurrentPage(1);
+                                handlePageSelect(1);
                               }}
                               className={`flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold transition cursor-pointer ${
                                 isSelected
@@ -621,7 +673,7 @@ export default function DashboardOverview({
                           type="button"
                           onClick={() => {
                             onSelectTag("All");
-                            setCurrentPage(1);
+                            handlePageSelect(1);
                           }}
                           className={`rounded-md px-2 py-0.5 text-[11px] font-medium cursor-pointer ${
                             selectedTag === "All"
@@ -637,7 +689,7 @@ export default function DashboardOverview({
                             type="button"
                             onClick={() => {
                               onSelectTag(tag);
-                              setCurrentPage(1);
+                              handlePageSelect(1);
                             }}
                             className={`rounded-md px-2 py-0.5 text-[11px] font-medium cursor-pointer ${
                               selectedTag.toLowerCase() === tag.toLowerCase()
@@ -706,6 +758,19 @@ export default function DashboardOverview({
                 </button>
               </div>
             </div>
+          ) : isLoading ? (
+            <div className="space-y-3 py-2">
+              {[1, 2, 3, 4].map((n) => (
+                <div key={n} className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-2xs animate-pulse flex items-center justify-between gap-4">
+                  <div className="space-y-2.5 flex-1">
+                    <div className="h-4 bg-slate-200 rounded-md w-1/3"></div>
+                    <div className="h-3 bg-slate-100 rounded-md w-1/2"></div>
+                    <div className="h-3 bg-slate-100 rounded-md w-1/4"></div>
+                  </div>
+                  <div className="h-9 bg-slate-100 rounded-xl w-28"></div>
+                </div>
+              ))}
+            </div>
           ) : (
             paginatedEvents.map((evt) => (
               <EventCard
@@ -729,8 +794,8 @@ export default function DashboardOverview({
               {/* Previous page button */}
               <button
                 type="button"
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
+                onClick={() => handlePageSelect(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1 || isLoading}
                 className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition cursor-pointer shadow-2xs"
                 aria-label="Previous Page"
               >
@@ -744,7 +809,8 @@ export default function DashboardOverview({
                   <button
                     key={pageNum}
                     type="button"
-                    onClick={() => setCurrentPage(pageNum)}
+                    onClick={() => handlePageSelect(pageNum)}
+                    disabled={isLoading}
                     className={`flex h-9 w-9 items-center justify-center rounded-xl text-xs font-semibold transition cursor-pointer ${
                       isActive
                         ? "bg-slate-900 text-white shadow-xs"
@@ -759,8 +825,8 @@ export default function DashboardOverview({
               {/* Next page button */}
               <button
                 type="button"
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
+                onClick={() => handlePageSelect(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage === totalPages || isLoading}
                 className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition cursor-pointer shadow-2xs"
                 aria-label="Next Page"
               >

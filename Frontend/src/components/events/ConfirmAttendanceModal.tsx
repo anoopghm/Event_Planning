@@ -32,13 +32,21 @@ export default function ConfirmAttendanceModal({
 }: ConfirmAttendanceModalProps) {
   const isEditing = Boolean(currentAttendee);
 
-  const [prevProps, setPrevProps] = useState({ isOpen, attendeeStatus: currentAttendee?.status });
+  const [prevProps, setPrevProps] = useState({
+    isOpen,
+    eventId: event?.id,
+    attendeeStatus: currentAttendee?.status
+  });
   const [selectedStatus, setSelectedStatus] = useState<"yes" | "no" | "maybe">(
     currentAttendee?.status || "yes"
   );
 
-  if (prevProps.isOpen !== isOpen || prevProps.attendeeStatus !== currentAttendee?.status) {
-    setPrevProps({ isOpen, attendeeStatus: currentAttendee?.status });
+  if (
+    prevProps.isOpen !== isOpen ||
+    prevProps.eventId !== event?.id ||
+    prevProps.attendeeStatus !== currentAttendee?.status
+  ) {
+    setPrevProps({ isOpen, eventId: event?.id, attendeeStatus: currentAttendee?.status });
     setSelectedStatus(currentAttendee?.status || "yes");
   }
 

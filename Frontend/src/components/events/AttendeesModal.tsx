@@ -15,15 +15,17 @@ export default function AttendeesModal({
   onClose,
   event,
 }: AttendeesModalProps) {
-  const [activeTab, setActiveTab] = useState<"yes" | "no">("yes");
+  const [activeTab, setActiveTab] = useState<"yes" | "maybe" | "no">("yes");
 
   if (!isOpen || !event) return null;
 
   const attendees = event.attendees || [];
   const yesList = attendees.filter((a) => a.status === "yes");
+  const maybeList = attendees.filter((a) => a.status === "maybe");
   const noList = attendees.filter((a) => a.status === "no");
 
-  const displayedList = activeTab === "yes" ? yesList : noList;
+  const displayedList =
+    activeTab === "yes" ? yesList : activeTab === "maybe" ? maybeList : noList;
 
   return (
     <Modal
@@ -47,7 +49,7 @@ export default function AttendeesModal({
           )}
         </div>
 
-        {/* Tabs: Attending (Yes) vs Not Attending (No) */}
+        {/* Tabs: Attending (Yes) vs Tentative (Maybe) vs Not Attending (No) */}
         <div className="flex rounded-xl bg-neutral-100 p-1 border border-neutral-200">
           <button
             type="button"
@@ -58,9 +60,24 @@ export default function AttendeesModal({
                 : "text-neutral-600 hover:text-neutral-900"
             }`}
           >
-            <span>✓ Confirmed Yes</span>
+            <span>✓ Yes</span>
             <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
               {yesList.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("maybe")}
+            className={`flex-1 flex items-center justify-center gap-2 rounded-lg py-2 text-xs font-semibold transition cursor-pointer ${
+              activeTab === "maybe"
+                ? "bg-white text-amber-700 shadow-xs"
+                : "text-neutral-600 hover:text-neutral-900"
+            }`}
+          >
+            <span>? Maybe</span>
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-700">
+              {maybeList.length}
             </span>
           </button>
 
@@ -73,7 +90,7 @@ export default function AttendeesModal({
                 : "text-neutral-600 hover:text-neutral-900"
             }`}
           >
-            <span>✕ Declined No</span>
+            <span>✕ No</span>
             <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-bold text-red-600">
               {noList.length}
             </span>
@@ -86,6 +103,8 @@ export default function AttendeesModal({
             <div className="py-10 text-center text-xs text-neutral-400">
               {activeTab === "yes"
                 ? "No attendees have confirmed 'Yes' yet."
+                : activeTab === "maybe"
+                ? "No attendees have responded 'Maybe' yet."
                 : "No users have responded 'No'."}
             </div>
           ) : (
@@ -97,7 +116,11 @@ export default function AttendeesModal({
                 <div className="flex items-center gap-3">
                   <div
                     className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold text-white shadow-xs ${
-                      attendee.status === "yes" ? "bg-emerald-500" : "bg-neutral-400"
+                      attendee.status === "yes"
+                        ? "bg-emerald-500"
+                        : attendee.status === "maybe"
+                        ? "bg-amber-500"
+                        : "bg-neutral-400"
                     }`}
                   >
                     {attendee.userName.charAt(0).toUpperCase()}
@@ -118,10 +141,16 @@ export default function AttendeesModal({
                     className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                       attendee.status === "yes"
                         ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                        : attendee.status === "maybe"
+                        ? "bg-amber-50 text-amber-700 border border-amber-200"
                         : "bg-red-50 text-red-700 border border-red-200"
                     }`}
                   >
-                    {attendee.status === "yes" ? "Attending" : "Declined"}
+                    {attendee.status === "yes"
+                      ? "Attending"
+                      : attendee.status === "maybe"
+                      ? "Maybe"
+                      : "Declined"}
                   </span>
                   {attendee.acknowledgedTime && (
                     <p className="mt-0.5 text-[10px] text-neutral-400">

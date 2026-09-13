@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 
 import Navbar from "../components/layout/Navbar";
@@ -11,9 +11,15 @@ import EventDetailsModal from "../components/events/EventDetailsModal";
 import { getEffectiveEventStatus } from "../utils/eventUtils";
 import { matchEventByLevenshtein, getEventLevenshteinScore } from "../utils/searchUtils";
 import { logoutUser } from "../utils/apiClient";
+import {
+  fetchEventsApi,
+  createEventApi,
+  updateEventApi,
+  deleteEventApi,
+  markPresenceApi
+} from "../utils/eventApi";
 
-
-import type { AuthUser, EventItem } from "../types";
+import type { AuthUser, EventItem, PaginationMeta, StatusCounts, EventSortOption } from "../types";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -31,26 +37,27 @@ export default function Dashboard() {
     return { id: 1, name: "Organizer", email: "organizer@evently.com" };
   });
 
-  // Events state (purely user-created / saved events, removing any legacy mock IDs)
-  const [events, setEvents] = useState<EventItem[]>(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      const saved = localStorage.getItem("dashboard_events");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          // Purge legacy mock data items (evt-1 through evt-7)
-          const nonMock = parsed.filter(
-            (e: EventItem) => !e.id?.match(/^evt-[1-7]$/)
-          );
-          return nonMock;
-        }
-      }
-      return [];
-    } catch {
-      return [];
-    }
+  // Events & Server Pagination State
+  const [events, setEvents] = useState<EventItem[]>([]);
+  const [pagination, setPagination] = useState<PaginationMeta>({
+    page: 1,
+    limit: 4,
+    totalItems: 0,
+    totalPages: 1,
+    hasNextPage: false,
+    hasPrevPage: false
   });
+  const [statusCounts, setStatusCounts] = useState<StatusCounts>({
+    all: 0,
+    upcoming: 0,
+    ongoing: 0,
+    past: 0
+  });
+  const [allUniqueTags, setAllUniqueTags] = useState<string[]>([]);
+  const [activeTab, setActiveTab] = useState<"All" | "Ongoing" | "Upcoming" | "Past">("Upcoming");
+  const [sortBy, setSortBy] = useState<EventSortOption>("event_time_asc");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Navigation view: "dashboard" or "my-events"
   const [currentView, setCurrentView] = useState<"dashboard" | "my-events">("dashboard");
@@ -83,6 +90,55 @@ export default function Dashboard() {
     navigate("/login", { replace: true });
   };
 
+  // Fetch events using Server-Side Pagination & Filtering
+  const loadEvents = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const res = await fetchEventsApi({
+        page: currentPage,
+        limit: 4,
+        status: activeTab,
+        tag: selectedTagFilter,
+        search: searchQuery.trim().length >= 3 ? searchQuery.trim() : undefined,
+        creator: currentView === "my-events" ? "me" : undefined,
+        sort: sortBy
+      });
+      setEvents(res.events);
+      setPagination(res.pagination);
+      setStatusCounts(res.counts);
+      if (res.tags && res.tags.length > 0) {
+        setAllUniqueTags(res.tags);
+      }
+    } catch (err) {
+      console.error("Failed to fetch events from API:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentPage, activeTab, selectedTagFilter, searchQuery, currentView, sortBy]);
+
+  useEffect(() => {
+    loadEvents();
+  }, [loadEvents]);
+
+  const handleTabChange = (tab: "All" | "Ongoing" | "Upcoming" | "Past") => {
+    setActiveTab(tab);
+    setCurrentPage(1);
+  };
+
+  const handleTagFilterChange = (tag: string) => {
+    setSelectedTagFilter(tag);
+    setCurrentPage(1);
+  };
+
+  const handleSearchChange = (query: string) => {
+    setSearchQuery(query);
+    setCurrentPage(1);
+  };
+
+  const handleSortChange = (sort: EventSortOption) => {
+    setSortBy(sort);
+    setCurrentPage(1);
+  };
 
   const openCreateModal = () => {
     setEditingEvent(null);
@@ -94,93 +150,60 @@ export default function Dashboard() {
     setIsModalOpen(true);
   };
 
-  const handleCreateEvent = (newEventData: Omit<EventItem, "id">) => {
-    const newEvent: EventItem = {
-      ...newEventData,
-      id: `evt-${Date.now()}`,
-      creatorId: user.id,
-      creatorName: user.name,
-      creatorEmail: user.email,
-      attendees: [],
-      createdAt: new Date().toISOString(),
-    };
-    const updated = [newEvent, ...events];
-    setEvents(updated);
+  const handleCreateEvent = async (newEventData: Omit<EventItem, "id">) => {
     try {
-      localStorage.setItem("dashboard_events", JSON.stringify(updated));
-    } catch (e) {
-      console.error("Failed to save to localStorage", e);
+      const created = await createEventApi({
+        ...newEventData,
+        creatorId: user.id,
+        creatorName: user.name,
+        creatorEmail: user.email
+      });
+      showToast(`"${created.title}" event created successfully!`);
+      loadEvents();
+    } catch (e: any) {
+      showToast(e.message || "Failed to create event");
     }
-    showToast(`"${newEvent.title}" event created successfully!`);
   };
 
-  const handleUpdateEvent = (updatedEvent: EventItem) => {
-    const updated = events.map((e) => (e.id === updatedEvent.id ? updatedEvent : e));
-    setEvents(updated);
+  const handleUpdateEvent = async (updatedEvent: EventItem) => {
     try {
-      localStorage.setItem("dashboard_events", JSON.stringify(updated));
-    } catch (e) {
-      console.error("Failed to update localStorage", e);
+      const updated = await updateEventApi(updatedEvent.id, updatedEvent);
+      showToast(`"${updated.title}" updated successfully!`);
+      loadEvents();
+    } catch (e: any) {
+      showToast(e.message || "Failed to update event");
     }
-    showToast(`"${updatedEvent.title}" updated successfully!`);
   };
 
-  const handleDeleteEvent = (id: string, title: string) => {
+  const handleDeleteEvent = async (id: string, title: string) => {
     if (window.confirm(`Are you sure you want to delete "${title}"?`)) {
-      const updated = events.filter((evt) => evt.id !== id);
-      setEvents(updated);
       try {
-        localStorage.setItem("dashboard_events", JSON.stringify(updated));
-      } catch (e) {
-        console.error("Failed to update localStorage", e);
+        await deleteEventApi(id);
+        showToast(`"${title}" was removed.`);
+        loadEvents();
+      } catch (e: any) {
+        showToast(e.message || "Failed to delete event");
       }
-      showToast(`"${title}" was removed.`);
     }
   };
 
-  const handleAttendanceConfirm = (decision: "yes" | "no" | "maybe") => {
+  const handleAttendanceConfirm = async (decision: "yes" | "no" | "maybe") => {
     if (!confirmModalEvent) return;
 
-    const eventSchedule = confirmModalEvent.endTime
-      ? `${confirmModalEvent.date} ${confirmModalEvent.time} - ${confirmModalEvent.endTime}`
-      : `${confirmModalEvent.date} ${confirmModalEvent.time}`;
-    const existingAttendees = confirmModalEvent.attendees || [];
-    const filteredAttendees = existingAttendees.filter(
-      (a) => String(a.userId) !== String(user.id)
-    );
-
-    const newAttendeeRecord = {
-      userId: user.id,
-      userName: user.name,
-      userEmail: user.email,
-      status: decision,
-      acknowledgedTime: eventSchedule,
-      updatedAt: new Date().toISOString(),
-    };
-
-    const updatedAttendees = [...filteredAttendees, newAttendeeRecord];
-
-    const updatedEvents = events.map((evt) =>
-      evt.id === confirmModalEvent.id
-        ? { ...evt, attendees: updatedAttendees }
-        : evt
-    );
-
-    setEvents(updatedEvents);
     try {
-      localStorage.setItem("dashboard_events", JSON.stringify(updatedEvents));
-    } catch (e) {
-      console.error("Failed to update localStorage", e);
+      await markPresenceApi(confirmModalEvent.id, decision, user);
+      showToast(
+        decision === "yes"
+          ? `You confirmed YES for "${confirmModalEvent.title}".`
+          : decision === "maybe"
+          ? `You responded MAYBE for "${confirmModalEvent.title}".`
+          : `You responded NO for "${confirmModalEvent.title}".`
+      );
+      setConfirmModalEvent(null);
+      await loadEvents();
+    } catch (e: any) {
+      showToast(e.message || "Failed to update attendance");
     }
-
-    setConfirmModalEvent(null);
-    showToast(
-      decision === "yes"
-        ? `You confirmed YES for "${confirmModalEvent.title}".`
-        : decision === "maybe"
-        ? `You responded MAYBE for "${confirmModalEvent.title}".`
-        : `You responded NO for "${confirmModalEvent.title}".`
-    );
   };
 
   // User-created events (strictly creatorId === user.id)
@@ -189,13 +212,14 @@ export default function Dashboard() {
   }, [events, user.id]);
 
   // Tags for all events (Dashboard view)
-  const allUniqueTags = useMemo(() => {
+  const dashboardUniqueTags = useMemo(() => {
+    if (allUniqueTags.length > 0) return allUniqueTags;
     const set = new Set<string>();
     events.forEach((e) => {
       e.tags?.forEach((t) => set.add(t));
     });
     return Array.from(set);
-  }, [events]);
+  }, [allUniqueTags, events]);
 
   const getTagCount = (tag: string) => {
     return events.filter((e) =>
@@ -377,9 +401,9 @@ export default function Dashboard() {
             user={user}
             events={events}
             filteredEvents={filteredDashboardEvents}
-            uniqueTags={allUniqueTags}
+            uniqueTags={dashboardUniqueTags}
             selectedTag={selectedTagFilter}
-            onSelectTag={setSelectedTagFilter}
+            onSelectTag={handleTagFilterChange}
             selectedEventType={selectedEventTypeFilter}
             onSelectEventType={setSelectedEventTypeFilter}
             getTagCount={getTagCount}
@@ -390,7 +414,15 @@ export default function Dashboard() {
             onConfirmAttendance={(evt) => setConfirmModalEvent(evt)}
             onViewDetails={(evt) => setDetailsModalEvent(evt)}
             searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
+            onSearchChange={handleSearchChange}
+            pagination={pagination}
+            onPageChange={setCurrentPage}
+            activeTab={activeTab}
+            onTabChange={handleTabChange}
+            sortBy={sortBy}
+            onSortChange={handleSortChange}
+            counts={statusCounts}
+            isLoading={isLoading}
           />
         )}
       </main>
@@ -430,7 +462,10 @@ export default function Dashboard() {
         event={confirmModalEvent}
         currentAttendee={
           confirmModalEvent?.attendees?.find(
-            (a) => String(a.userId) === String(user.id)
+            (a) =>
+              String(a.userId) === String(user.id) ||
+              a.userId === "currentUser" ||
+              (user.email && a.userEmail === user.email)
           ) || null
         }
         onConfirm={handleAttendanceConfirm}
@@ -438,9 +473,14 @@ export default function Dashboard() {
           confirmModalEvent &&
             confirmModalEvent.attendees?.some(
               (a) =>
-                String(a.userId) === String(user.id) &&
+                (String(a.userId) === String(user.id) ||
+                  a.userId === "currentUser" ||
+                  (user.email && a.userEmail === user.email)) &&
                 a.acknowledgedTime &&
-                a.acknowledgedTime !== `${confirmModalEvent.date} ${confirmModalEvent.time}`
+                a.acknowledgedTime !==
+                  (confirmModalEvent.endTime
+                    ? `${confirmModalEvent.date} ${confirmModalEvent.time}-${confirmModalEvent.endTime}`
+                    : `${confirmModalEvent.date} ${confirmModalEvent.time}`)
             )
         )}
       />

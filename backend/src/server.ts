@@ -4,6 +4,7 @@ dotenv.config();
 import app from "./app";
 import pool from "./models/db";
 import { initDb } from "./models/initDb";
+import { logger } from "./utils/logger";
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 4000;
 
@@ -12,19 +13,27 @@ async function start() {
     throw new Error("JWT_SECRET is required. Copy .env.example to .env and set it.");
   }
 
+  logger.info("Connecting to database and verifying connection pool...");
   await pool.query("SELECT 1");
+  logger.info("Database connection established. Running schema initialization...");
   await initDb();
+  logger.info("Database initialization completed successfully.");
 
   const server = app.listen(PORT, () => {
-    console.log(`Server listening on port ${PORT}`);
+    logger.info(`Server listening on port ${PORT} [env: ${process.env.NODE_ENV || "development"}]`);
   });
 
   const shutdown = (signal: string) => {
-    console.log(`${signal} received; shutting down.`);
+    logger.warn(`${signal} signal received: closing HTTP server...`);
     server.close(() => {
+      logger.info("HTTP server closed. Terminating database connection pool...");
       pool.end()
-        .catch((error: Error) => console.error("Unable to close database pool:", error.message))
-        .finally(() => process.exit(0));
+        .then(() => logger.info("Database pool closed cleanly."))
+        .catch((error: Error) => logger.error("Unable to close database pool:", error))
+        .finally(() => {
+          logger.info("Shutdown complete. Exiting process.");
+          process.exit(0);
+        });
     });
   };
 
@@ -33,6 +42,6 @@ async function start() {
 }
 
 start().catch((error) => {
-  console.error("Unable to start server:", error.message);
+  logger.error("Unable to start server:", error);
   process.exit(1);
 });

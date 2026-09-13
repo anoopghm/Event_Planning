@@ -6,7 +6,11 @@ CREATE TABLE IF NOT EXISTS users (
   name VARCHAR(255) NOT NULL,
   email VARCHAR(255) NOT NULL UNIQUE,
   password VARCHAR(255) NOT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  is_verified TINYINT(1) NOT NULL DEFAULT 0,
+  verification_token VARCHAR(255) DEFAULT NULL,
+  verification_token_expires DATETIME DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_users_verification_token (verification_token)
 );
 
 CREATE TABLE IF NOT EXISTS events (

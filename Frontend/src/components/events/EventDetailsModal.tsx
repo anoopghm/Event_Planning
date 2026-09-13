@@ -43,7 +43,10 @@ export default function EventDetailsModal({
   const effectiveStatus = getEffectiveEventStatus(event);
   const isCreator = String(event.creatorId) === String(currentUser.id);
   const userAttendee = event.attendees?.find(
-    (a) => String(a.userId) === String(currentUser.id)
+    (a) =>
+      String(a.userId) === String(currentUser.id) ||
+      a.userId === "currentUser" ||
+      (currentUser.email && a.userEmail === currentUser.email)
   );
 
   const attendees = event.attendees || [];
@@ -294,7 +297,10 @@ export default function EventDetailsModal({
               </div>
             ) : (
               displayedAttendees.map((attendee) => {
-                const isUser = String(attendee.userId) === String(currentUser.id);
+                const isUser =
+                  String(attendee.userId) === String(currentUser.id) ||
+                  attendee.userId === "currentUser" ||
+                  (currentUser.email && attendee.userEmail === currentUser.email);
                 return (
                   <div
                     key={String(attendee.userId)}

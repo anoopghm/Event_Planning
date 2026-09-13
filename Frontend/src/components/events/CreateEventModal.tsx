@@ -4,6 +4,7 @@ import Modal from "../ui/Modal";
 import Button from "../ui/Button";
 import { PRESET_TAGS } from "../../constants/mockData";
 import { computeEventStatus, getStatusBadge } from "../../utils/eventUtils";
+import { optimizeCloudinaryUrl } from "../../utils/cloudinary";
 import type { EventItem, Attendee } from "../../types";
 
 export type { EventItem, Attendee };
@@ -138,8 +139,9 @@ function EventFormContent({
       return "https://images.unsplash.com/photo-1505373877841-8d25f7d46678?w=800&auto=format&fit=crop&q=80";
     };
 
-    const finalImageUrl =
+    const rawImageUrl =
       imageUrl.trim() || eventToEdit?.imageUrl || getAutoImageForTags(selectedTags);
+    const finalImageUrl = optimizeCloudinaryUrl(rawImageUrl);
 
     const computedStatus = computeEventStatus(date, time, endTime);
 
@@ -408,7 +410,12 @@ function EventFormContent({
           type="url"
           value={imageUrl}
           onChange={(e) => setImageUrl(e.target.value)}
-          placeholder="e.g. https://images.unsplash.com/photo-..."
+          onBlur={() => {
+            if (imageUrl.trim()) {
+              setImageUrl(optimizeCloudinaryUrl(imageUrl.trim()));
+            }
+          }}
+          placeholder="e.g. Cloudinary link or https://images.unsplash.com/photo-..."
           className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none transition placeholder:text-slate-400 focus:border-rose-400 focus:ring-4 focus:ring-rose-500/10 shadow-2xs"
         />
       </div>

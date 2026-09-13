@@ -1,6 +1,6 @@
 import { NextFunction, Request, Response, Router } from "express";
-import { body, validationResult } from "express-validator";
-import { register, login, refresh, logout } from "../controllers/authController";
+import { body, query, validationResult } from "express-validator";
+import { register, login, refresh, logout, verifyEmail, resendVerification } from "../controllers/authController";
 import { AuthenticatedRequest, requireAuth, optionalAuth } from "../middleware/auth";
 
 const router = Router();
@@ -95,6 +95,79 @@ router.post("/logout", optionalAuth, async (req: Request, res: Response, next: N
     return next(err);
   }
 });
+
+router.get(
+  "/verify-email",
+  [
+    query("token")
+      .trim()
+      .notEmpty()
+      .withMessage("Verification token is required.")
+  ],
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          message: errors.array()[0].msg,
+          errors: errors.array()
+        });
+      }
+      return await verifyEmail(req, res, next);
+    } catch (err) {
+      return next(err);
+    }
+  }
+);
+
+router.post(
+  "/verify-email",
+  [
+    body("token")
+      .trim()
+      .notEmpty()
+      .withMessage("Verification token is required.")
+  ],
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          message: errors.array()[0].msg,
+          errors: errors.array()
+        });
+      }
+      return await verifyEmail(req, res, next);
+    } catch (err) {
+      return next(err);
+    }
+  }
+);
+
+router.post(
+  "/resend-verification",
+  [
+    body("email")
+      .trim()
+      .isEmail()
+      .withMessage("Please enter a valid email address.")
+      .normalizeEmail()
+  ],
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          message: errors.array()[0].msg,
+          errors: errors.array()
+        });
+      }
+      return await resendVerification(req, res, next);
+    } catch (err) {
+      return next(err);
+    }
+  }
+);
 
 router.get("/me", requireAuth, (req: AuthenticatedRequest, res: Response) => {
   return res.json({ user: req.user });

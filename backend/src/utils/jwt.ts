@@ -4,6 +4,7 @@ import { CookieOptions } from "express";
 import { RowDataPacket, ResultSetHeader } from "mysql2";
 
 import pool from "../models/db";
+import { logger } from "./logger";
 
 export interface TokenUser {
   id: number;
@@ -242,6 +243,7 @@ export async function rotateRefreshToken(oldRawToken: string): Promise<{
 
   // 3. Check if already revoked -> potential token reuse attack!
   if (tokenRecord.revoked) {
+    logger.warn(`Security alert: Refresh token reuse detected for userId ${tokenRecord.user_id}! Revoking all sessions.`);
     // For enhanced security, revoke all tokens for this user when reuse is detected
     await revokeAllUserRefreshTokens(tokenRecord.user_id);
     const reuseErr = new Error("Token reuse detected. All sessions have been terminated for security.");
