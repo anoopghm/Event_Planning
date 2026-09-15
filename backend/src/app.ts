@@ -11,6 +11,8 @@ import { errorHandler, notFound } from "./middleware/errors";
 import { cookieParserMiddleware } from "./middleware/cookies";
 import { requestLogger } from "./utils/logger";
 
+import { setupSwagger } from "./docs/swagger";
+
 const app = express();
 const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:5173")
   .split(",")
@@ -18,10 +20,17 @@ const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:5173")
   .filter(Boolean);
 
 app.use(requestLogger);
-app.use(helmet());
+app.use(
+  helmet({
+    contentSecurityPolicy: false
+  })
+);
 app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json({ limit: "16kb" }));
 app.use(cookieParserMiddleware);
+
+// API Documentation (Swagger UI)
+setupSwagger(app);
 
 
 const authLimiter = rateLimit({
