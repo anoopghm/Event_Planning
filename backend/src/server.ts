@@ -2,7 +2,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import app from "./app";
-import pool from "./models/db";
+import db from "./models/db";
 import { initDb } from "./models/initDb";
 import { logger } from "./utils/logger";
 
@@ -14,8 +14,8 @@ async function start() {
   }
 
   logger.info("Connecting to database and verifying connection pool...");
-  await pool.query("SELECT 1");
-  logger.info("Database connection established. Running schema initialization...");
+  await db.raw("SELECT 1");
+  logger.info("Database connection established. Running Knex migrations...");
   await initDb();
   logger.info("Database initialization completed successfully.");
 
@@ -27,7 +27,7 @@ async function start() {
     logger.warn(`${signal} signal received: closing HTTP server...`);
     server.close(() => {
       logger.info("HTTP server closed. Terminating database connection pool...");
-      pool.end()
+      db.destroy()
         .then(() => logger.info("Database pool closed cleanly."))
         .catch((error: Error) => logger.error("Unable to close database pool:", error))
         .finally(() => {

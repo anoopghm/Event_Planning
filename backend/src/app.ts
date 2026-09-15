@@ -38,7 +38,11 @@ const authLimiter = rateLimit({
   limit: 20,
   standardHeaders: "draft-7",
   legacyHeaders: false,
-  message: { message: "Too many authentication attempts. Try again later." }
+  message: {
+    ok: false,
+    code: "RATE_LIMIT_EXCEEDED",
+    message: "Too many authentication attempts. For your security, please wait 15 minutes before trying again."
+  }
 });
 
 const refreshLimiter = rateLimit({
@@ -46,7 +50,11 @@ const refreshLimiter = rateLimit({
   limit: 60,
   standardHeaders: "draft-7",
   legacyHeaders: false,
-  message: { message: "Too many token refresh requests. Try again later." }
+  message: {
+    ok: false,
+    code: "RATE_LIMIT_EXCEEDED",
+    message: "Too many token refresh requests. Please wait a few minutes before trying again."
+  }
 });
 
 const resendLimiter = rateLimit({
@@ -54,7 +62,11 @@ const resendLimiter = rateLimit({
   limit: 10,
   standardHeaders: "draft-7",
   legacyHeaders: false,
-  message: { message: "Too many verification requests. Please try again later." }
+  message: {
+    ok: false,
+    code: "RATE_LIMIT_EXCEEDED",
+    message: "Too many verification requests. Please check your spam folder or wait 15 minutes before requesting again."
+  }
 });
 
 app.get("/", (_req, res) => res.json({ ok: true }));

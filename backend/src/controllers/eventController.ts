@@ -1,12 +1,11 @@
 import { NextFunction, Request, Response } from "express";
-import pool from "../models/db";
-import { ResultSetHeader, RowDataPacket } from "mysql2";
+import db from "../models/db";
 import { AuthenticatedRequest } from "../middleware/auth";
 import { filterEventsByLevenshtein } from "../utils/searchUtils";
 import { logger } from "../utils/logger";
 import { optimizeCloudinaryUrl } from "../utils/cloudinary";
 
-export interface EventRow extends RowDataPacket {
+export interface EventRow {
   id: number;
   title: string;
   description: string | null;
@@ -27,7 +26,7 @@ export interface EventRow extends RowDataPacket {
   user_presence?: "yes" | "no" | "maybe" | null;
 }
 
-interface PresenceAttendeeRow extends RowDataPacket {
+interface PresenceAttendeeRow {
   event_id?: number;
   user_id: number;
   name: string;
@@ -168,38 +167,34 @@ export async function createEvent(req: AuthenticatedRequest, res: Response, next
   const userId = req.user?.id;
 
   if (!userId) {
-    return res.status(401).json({ message: "Authentication is required" });
+    return res.status(401).json({
+      ok: false,
+      code: "AUTH_REQUIRED",
+      message: "You must be signed in to create an event."
+    });
   }
 
   try {
-    const [result] = await pool.execute<ResultSetHeader>(
-      `INSERT INTO events (title, description, date, time, location, image_url, tags, status, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        title.trim(),
-        description ? description.trim() : "",
-        date.trim(),
-        time.trim(),
-        location ? location.trim() : null,
-        imageUrl,
-        JSON.stringify(tags),
-        status ? status.trim() : "Upcoming",
-        userId
-      ]
-    );
-
-    const eventId = result.insertId;
+    const [eventId] = await db("events").insert({
+      title: title.trim(),
+      description: description ? description.trim() : "",
+      date: date.trim(),
+      time: time.trim(),
+      location: location ? location.trim() : null,
+      image_url: imageUrl,
+      tags: JSON.stringify(tags),
+      status: status ? status.trim() : "Upcoming",
+      created_by: userId
+    });
 
     // Fetch the newly created event with creator details
-    const [rows] = await pool.execute<EventRow[]>(
-      `SELECT e.*, u.name AS creator_name, u.email AS creator_email
-       FROM events e
-       JOIN users u ON e.created_by = u.id
-       WHERE e.id = ?`,
-      [eventId]
-    );
+    const row = await db("events as e")
+      .join("users as u", "e.created_by", "u.id")
+      .select("e.*", "u.name as creator_name", "u.email as creator_email")
+      .where("e.id", eventId)
+      .first<EventRow>();
 
-    const createdEvent = formatEvent(rows[0], userId);
+    const createdEvent = formatEvent(row!, userId);
 
     logger.info(`Event created successfully [eventId: ${eventId}, title: "${title.trim()}", creatorId: ${userId}]`);
 
@@ -211,7 +206,11 @@ export async function createEvent(req: AuthenticatedRequest, res: Response, next
   } catch (err) {
     logger.error("Create event error:", err);
     if (next) return next(err);
-    return res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({
+      ok: false,
+      code: "CREATE_EVENT_FAILED",
+      message: "We were unable to create your event. Please try again."
+    });
   }
 }
 
@@ -224,54 +223,49 @@ export async function getEvents(req: AuthenticatedRequest, res: Response, next?:
   const { tag, search, status, creator, sort, sortBy, order, page, limit } = req.query;
 
   try {
-    let query = `
-      SELECT 
-        e.id,
-        e.title,
-        e.description,
-        e.date,
-        e.time,
-        e.location,
-        e.image_url,
-        e.tags,
-        e.status,
-        e.created_by,
-        e.created_at,
-        e.updated_at,
-        u.name AS creator_name,
-        u.email AS creator_email,
-        COALESCE(SUM(CASE WHEN p.status = 'yes' THEN 1 ELSE 0 END), 0) AS yes_count,
-        COALESCE(SUM(CASE WHEN p.status = 'no' THEN 1 ELSE 0 END), 0) AS no_count,
-        COALESCE(SUM(CASE WHEN p.status = 'maybe' THEN 1 ELSE 0 END), 0) AS maybe_count
-        ${currentUserId ? `, MAX(CASE WHEN p.user_id = ${Number(currentUserId)} THEN p.status ELSE NULL END) AS user_presence` : ""}
-      FROM events e
-      JOIN users u ON e.created_by = u.id
-      LEFT JOIN event_presence p ON e.id = p.event_id
-    `;
+    const query = db("events as e")
+      .join("users as u", "e.created_by", "u.id")
+      .leftJoin("event_presence as p", "e.id", "p.event_id")
+      .select(
+        "e.id",
+        "e.title",
+        "e.description",
+        "e.date",
+        "e.time",
+        "e.location",
+        "e.image_url",
+        "e.tags",
+        "e.status",
+        "e.created_by",
+        "e.created_at",
+        "e.updated_at",
+        "u.name as creator_name",
+        "u.email as creator_email",
+        db.raw("COALESCE(SUM(CASE WHEN p.status = 'yes' THEN 1 ELSE 0 END), 0) AS yes_count"),
+        db.raw("COALESCE(SUM(CASE WHEN p.status = 'no' THEN 1 ELSE 0 END), 0) AS no_count"),
+        db.raw("COALESCE(SUM(CASE WHEN p.status = 'maybe' THEN 1 ELSE 0 END), 0) AS maybe_count")
+      );
 
-    const whereConditions: string[] = [];
-    const params: any[] = [];
+    if (currentUserId) {
+      query.select(
+        db.raw("MAX(CASE WHEN p.user_id = ? THEN p.status ELSE NULL END) AS user_presence", [Number(currentUserId)])
+      );
+    }
 
     if (creator) {
       if (creator === "me" && currentUserId) {
-        whereConditions.push("e.created_by = ?");
-        params.push(currentUserId);
+        query.where("e.created_by", currentUserId);
       } else if (!isNaN(Number(creator))) {
-        whereConditions.push("e.created_by = ?");
-        params.push(Number(creator));
+        query.where("e.created_by", Number(creator));
       }
     }
 
-    if (whereConditions.length > 0) {
-      query += ` WHERE ${whereConditions.join(" AND ")}`;
-    }
+    query.groupBy("e.id", "u.id").orderBy([
+      { column: "e.date", order: "asc" },
+      { column: "e.time", order: "asc" }
+    ]);
 
-    query += `
-      GROUP BY e.id, u.id
-      ORDER BY e.date ASC, e.time ASC
-    `;
-
-    const [rows] = await pool.execute<EventRow[]>(query, params);
+    const rows = (await query) as EventRow[];
 
     // Map rows into formatted events with dynamic real-time status
     const allFormattedEvents = rows.map((row) => formatEvent(row, currentUserId));
@@ -279,14 +273,11 @@ export async function getEvents(req: AuthenticatedRequest, res: Response, next?:
     // Fetch attendee records for all returned events to populate the attendees list
     if (allFormattedEvents.length > 0) {
       const eventIds = allFormattedEvents.map((e) => e.id);
-      const [attendeeRows] = await pool.query<PresenceAttendeeRow[]>(
-        `SELECT p.event_id, p.user_id, u.name, u.email, p.status, p.updated_at
-         FROM event_presence p
-         JOIN users u ON p.user_id = u.id
-         WHERE p.event_id IN (?)
-         ORDER BY p.updated_at DESC`,
-        [eventIds]
-      );
+      const attendeeRows = (await db("event_presence as p")
+        .join("users as u", "p.user_id", "u.id")
+        .select("p.event_id", "p.user_id", "u.name", "u.email", "p.status", "p.updated_at")
+        .whereIn("p.event_id", eventIds)
+        .orderBy("p.updated_at", "desc")) as PresenceAttendeeRow[];
 
       const attendeesByEvent = new Map<number, { yes: any[]; maybe: any[]; no: any[] }>();
       for (const att of attendeeRows) {
@@ -434,7 +425,11 @@ export async function getEvents(req: AuthenticatedRequest, res: Response, next?:
   } catch (err) {
     logger.error("Get events error:", err);
     if (next) return next(err);
-    return res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({
+      ok: false,
+      code: "FETCH_EVENTS_FAILED",
+      message: "We were unable to load events at this time. Please try refreshing."
+    });
   }
 }
 
@@ -448,52 +443,63 @@ export async function getEventById(req: AuthenticatedRequest, res: Response, nex
 
   if (isNaN(eventId)) {
     logger.warn(`Get event failed: invalid event ID parameter [param: "${req.params.id}"]`);
-    return res.status(400).json({ message: "Invalid event ID" });
+    return res.status(400).json({
+      ok: false,
+      code: "INVALID_EVENT_ID",
+      message: "The event ID is invalid. It must be a valid number."
+    });
   }
 
   try {
-    const [rows] = await pool.execute<EventRow[]>(
-      `SELECT 
-        e.id,
-        e.title,
-        e.description,
-        e.date,
-        e.time,
-        e.location,
-        e.image_url,
-        e.tags,
-        e.status,
-        e.created_by,
-        e.created_at,
-        e.updated_at,
-        u.name AS creator_name,
-        u.email AS creator_email,
-        COALESCE(SUM(CASE WHEN p.status = 'yes' THEN 1 ELSE 0 END), 0) AS yes_count,
-        COALESCE(SUM(CASE WHEN p.status = 'no' THEN 1 ELSE 0 END), 0) AS no_count,
-        COALESCE(SUM(CASE WHEN p.status = 'maybe' THEN 1 ELSE 0 END), 0) AS maybe_count
-        ${currentUserId ? `, MAX(CASE WHEN p.user_id = ${Number(currentUserId)} THEN p.status ELSE NULL END) AS user_presence` : ""}
-      FROM events e
-      JOIN users u ON e.created_by = u.id
-      LEFT JOIN event_presence p ON e.id = p.event_id
-      WHERE e.id = ?
-      GROUP BY e.id, u.id`,
-      [eventId]
-    );
+    const query = db("events as e")
+      .join("users as u", "e.created_by", "u.id")
+      .leftJoin("event_presence as p", "e.id", "p.event_id")
+      .select(
+        "e.id",
+        "e.title",
+        "e.description",
+        "e.date",
+        "e.time",
+        "e.location",
+        "e.image_url",
+        "e.tags",
+        "e.status",
+        "e.created_by",
+        "e.created_at",
+        "e.updated_at",
+        "u.name as creator_name",
+        "u.email as creator_email",
+        db.raw("COALESCE(SUM(CASE WHEN p.status = 'yes' THEN 1 ELSE 0 END), 0) AS yes_count"),
+        db.raw("COALESCE(SUM(CASE WHEN p.status = 'no' THEN 1 ELSE 0 END), 0) AS no_count"),
+        db.raw("COALESCE(SUM(CASE WHEN p.status = 'maybe' THEN 1 ELSE 0 END), 0) AS maybe_count")
+      )
+      .where("e.id", eventId);
 
-    if (rows.length === 0) {
+    if (currentUserId) {
+      query.select(
+        db.raw("MAX(CASE WHEN p.user_id = ? THEN p.status ELSE NULL END) AS user_presence", [Number(currentUserId)])
+      );
+    }
+
+    query.groupBy("e.id", "u.id");
+
+    const row = await query.first<EventRow>();
+
+    if (!row) {
       logger.warn(`Get event failed: event not found [eventId: ${eventId}]`);
-      return res.status(404).json({ message: "Event not found" });
+      return res.status(404).json({
+        ok: false,
+        code: "EVENT_NOT_FOUND",
+        message: "The requested event could not be found. It may have been deleted."
+      });
     }
 
     // Fetch list of attendees who marked presence
-    const [attendeeRows] = await pool.execute<PresenceAttendeeRow[]>(
-      `SELECT p.user_id, u.name, u.email, p.status, p.updated_at
-       FROM event_presence p
-       JOIN users u ON p.user_id = u.id
-       WHERE p.event_id = ?
-       ORDER BY p.updated_at DESC`,
-      [eventId]
-    );
+    const attendeeRows = (await db("event_presence as p")
+      .join("users as u", "p.user_id", "u.id")
+      .select("p.user_id", "u.name", "u.email", "p.status", "p.updated_at")
+      .where("p.event_id", eventId)
+      .orderBy("p.updated_at", "desc")) as PresenceAttendeeRow[];
 
     const attendees = {
       yes: attendeeRows
@@ -507,9 +513,9 @@ export async function getEventById(req: AuthenticatedRequest, res: Response, nex
         .map((a) => ({ id: a.user_id, name: a.name, email: a.email, updatedAt: a.updated_at }))
     };
 
-    const formatted = formatEvent(rows[0], currentUserId);
+    const formatted = formatEvent(row, currentUserId);
 
-    logger.info(`Event details retrieved [eventId: ${eventId}, title: "${rows[0].title}"]`);
+    logger.info(`Event details retrieved [eventId: ${eventId}, title: "${row.title}"]`);
 
     return res.json({
       ok: true,
@@ -521,7 +527,11 @@ export async function getEventById(req: AuthenticatedRequest, res: Response, nex
   } catch (err) {
     logger.error(`Get event by ID error [eventId: ${eventId}]:`, err);
     if (next) return next(err);
-    return res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({
+      ok: false,
+      code: "FETCH_EVENT_FAILED",
+      message: "Unable to retrieve event details at this time. Please try again."
+    });
   }
 }
 
@@ -534,32 +544,44 @@ export async function updateEvent(req: AuthenticatedRequest, res: Response, next
   const currentUserId = req.user?.id;
 
   if (isNaN(eventId)) {
-    return res.status(400).json({ message: "Invalid event ID" });
+    return res.status(400).json({
+      ok: false,
+      code: "INVALID_EVENT_ID",
+      message: "The event ID is invalid. It must be a valid number."
+    });
   }
 
   if (!currentUserId) {
-    return res.status(401).json({ message: "Authentication is required" });
+    return res.status(401).json({
+      ok: false,
+      code: "AUTH_REQUIRED",
+      message: "You must be signed in to modify an event."
+    });
   }
 
   try {
     // 1. Fetch the event to verify existence and check creator ownership
-    const [existingRows] = await pool.execute<EventRow[]>(
-      "SELECT id, created_by, title, description, date, time, location, image_url, tags, status FROM events WHERE id = ?",
-      [eventId]
-    );
+    const event = await db<EventRow>("events")
+      .select("id", "created_by", "title", "description", "date", "time", "location", "image_url", "tags", "status")
+      .where({ id: eventId })
+      .first();
 
-    if (existingRows.length === 0) {
+    if (!event) {
       logger.warn(`Update event failed: event not found [eventId: ${eventId}]`);
-      return res.status(404).json({ message: "Event not found" });
+      return res.status(404).json({
+        ok: false,
+        code: "EVENT_NOT_FOUND",
+        message: "The event you are trying to update could not be found."
+      });
     }
-
-    const event = existingRows[0];
 
     // 2. Authorization check: ONLY creator can modify
     if (event.created_by !== currentUserId) {
       logger.warn(`Update event forbidden: user ${currentUserId} is not creator of event ${eventId} (owner: ${event.created_by})`);
       return res.status(403).json({
-        message: "You are not authorized to modify this event. Only the event creator can modify it."
+        ok: false,
+        code: "FORBIDDEN",
+        message: "You do not have permission to modify this event. Only the creator can update it."
       });
     }
 
@@ -576,49 +598,51 @@ export async function updateEvent(req: AuthenticatedRequest, res: Response, next
     const newStatus = status !== undefined ? String(status).trim() : event.status;
     const newTags = req.body.tags !== undefined ? normalizeTags(req.body.tags) : parseTags(event.tags);
 
-    await pool.execute(
-      `UPDATE events
-       SET title = ?, description = ?, date = ?, time = ?, location = ?, image_url = ?, tags = ?, status = ?
-       WHERE id = ?`,
-      [
-        newTitle,
-        newDescription,
-        newDate,
-        newTime,
-        newLocation,
-        newImageUrl ?? null,
-        JSON.stringify(newTags),
-        newStatus,
-        eventId
-      ]
-    );
+    await db("events")
+      .where({ id: eventId })
+      .update({
+        title: newTitle,
+        description: newDescription,
+        date: newDate,
+        time: newTime,
+        location: newLocation,
+        image_url: newImageUrl ?? null,
+        tags: JSON.stringify(newTags),
+        status: newStatus
+      });
 
     // Fetch updated event
-    const [updatedRows] = await pool.execute<EventRow[]>(
-      `SELECT e.*, u.name AS creator_name, u.email AS creator_email,
-         COALESCE(SUM(CASE WHEN p.status = 'yes' THEN 1 ELSE 0 END), 0) AS yes_count,
-         COALESCE(SUM(CASE WHEN p.status = 'no' THEN 1 ELSE 0 END), 0) AS no_count,
-         COALESCE(SUM(CASE WHEN p.status = 'maybe' THEN 1 ELSE 0 END), 0) AS maybe_count,
-         MAX(CASE WHEN p.user_id = ? THEN p.status ELSE NULL END) AS user_presence
-       FROM events e
-       JOIN users u ON e.created_by = u.id
-       LEFT JOIN event_presence p ON e.id = p.event_id
-       WHERE e.id = ?
-       GROUP BY e.id, u.id`,
-      [currentUserId, eventId]
-    );
+    const updatedRow = await db("events as e")
+      .join("users as u", "e.created_by", "u.id")
+      .leftJoin("event_presence as p", "e.id", "p.event_id")
+      .select(
+        "e.*",
+        "u.name as creator_name",
+        "u.email as creator_email",
+        db.raw("COALESCE(SUM(CASE WHEN p.status = 'yes' THEN 1 ELSE 0 END), 0) AS yes_count"),
+        db.raw("COALESCE(SUM(CASE WHEN p.status = 'no' THEN 1 ELSE 0 END), 0) AS no_count"),
+        db.raw("COALESCE(SUM(CASE WHEN p.status = 'maybe' THEN 1 ELSE 0 END), 0) AS maybe_count"),
+        db.raw("MAX(CASE WHEN p.user_id = ? THEN p.status ELSE NULL END) AS user_presence", [currentUserId])
+      )
+      .where("e.id", eventId)
+      .groupBy("e.id", "u.id")
+      .first<EventRow>();
 
     logger.info(`Event updated successfully [eventId: ${eventId}, updatedBy: ${currentUserId}]`);
 
     return res.json({
       ok: true,
       message: "Event updated successfully",
-      event: formatEvent(updatedRows[0], currentUserId)
+      event: formatEvent(updatedRow!, currentUserId)
     });
   } catch (err) {
     logger.error(`Update event error [eventId: ${eventId}]:`, err);
     if (next) return next(err);
-    return res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({
+      ok: false,
+      code: "UPDATE_EVENT_FAILED",
+      message: "Unable to update the event at this time. Please try again."
+    });
   }
 }
 
@@ -632,37 +656,49 @@ export async function deleteEvent(req: AuthenticatedRequest, res: Response, next
 
   if (isNaN(eventId)) {
     logger.warn(`Delete event failed: invalid event ID parameter [param: "${req.params.id}"]`);
-    return res.status(400).json({ message: "Invalid event ID" });
+    return res.status(400).json({
+      ok: false,
+      code: "INVALID_EVENT_ID",
+      message: "The event ID is invalid. It must be a valid number."
+    });
   }
 
   if (!currentUserId) {
-    return res.status(401).json({ message: "Authentication is required" });
+    return res.status(401).json({
+      ok: false,
+      code: "AUTH_REQUIRED",
+      message: "You must be signed in to delete an event."
+    });
   }
 
   try {
     // 1. Fetch the event to verify existence and check creator ownership
-    const [existingRows] = await pool.execute<EventRow[]>(
-      "SELECT id, created_by, title FROM events WHERE id = ?",
-      [eventId]
-    );
+    const event = await db<EventRow>("events")
+      .select("id", "created_by", "title")
+      .where({ id: eventId })
+      .first();
 
-    if (existingRows.length === 0) {
+    if (!event) {
       logger.warn(`Delete event failed: event not found [eventId: ${eventId}]`);
-      return res.status(404).json({ message: "Event not found" });
+      return res.status(404).json({
+        ok: false,
+        code: "EVENT_NOT_FOUND",
+        message: "The event you are trying to delete could not be found."
+      });
     }
-
-    const event = existingRows[0];
 
     // 2. Authorization check: ONLY creator can delete
     if (event.created_by !== currentUserId) {
       logger.warn(`Delete event forbidden: user ${currentUserId} is not creator of event ${eventId} (owner: ${event.created_by})`);
       return res.status(403).json({
-        message: "You are not authorized to delete this event. Only the event creator can delete it."
+        ok: false,
+        code: "FORBIDDEN",
+        message: "You do not have permission to delete this event. Only the creator can delete it."
       });
     }
 
     // 3. Delete the event (cascades to event_presence table)
-    await pool.execute("DELETE FROM events WHERE id = ?", [eventId]);
+    await db("events").where({ id: eventId }).del();
 
     logger.info(`Event deleted successfully [eventId: ${eventId}, title: "${event.title}", deletedBy: ${currentUserId}]`);
 
@@ -674,7 +710,11 @@ export async function deleteEvent(req: AuthenticatedRequest, res: Response, next
   } catch (err) {
     logger.error(`Delete event error [eventId: ${eventId}]:`, err);
     if (next) return next(err);
-    return res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({
+      ok: false,
+      code: "DELETE_EVENT_FAILED",
+      message: "Unable to delete the event at this time. Please try again."
+    });
   }
 }
 
@@ -688,11 +728,19 @@ export async function markPresence(req: AuthenticatedRequest, res: Response, nex
 
   if (isNaN(eventId)) {
     logger.warn(`Mark presence failed: invalid event ID [param: "${req.params.id}"]`);
-    return res.status(400).json({ message: "Invalid event ID" });
+    return res.status(400).json({
+      ok: false,
+      code: "INVALID_EVENT_ID",
+      message: "The event ID is invalid. It must be a valid number."
+    });
   }
 
   if (!currentUserId) {
-    return res.status(401).json({ message: "Authentication is required" });
+    return res.status(401).json({
+      ok: false,
+      code: "AUTH_REQUIRED",
+      message: "You must be signed in to submit an RSVP."
+    });
   }
 
   const rawStatus = (req.body.status || req.body.presence || "").toString().toLowerCase().trim();
@@ -700,24 +748,30 @@ export async function markPresence(req: AuthenticatedRequest, res: Response, nex
   if (rawStatus !== "yes" && rawStatus !== "no" && rawStatus !== "maybe") {
     logger.warn(`Mark presence rejected: invalid status "${rawStatus}" [eventId: ${eventId}, userId: ${currentUserId}]`);
     return res.status(400).json({
-      message: "Presence status must be 'yes', 'no', or 'maybe'"
+      ok: false,
+      code: "INVALID_STATUS",
+      message: "Attendance response must be either 'yes', 'no', or 'maybe'."
     });
   }
 
   try {
     // Check if event exists
-    const [eventRows] = await pool.execute<EventRow[]>(
-      "SELECT id, title FROM events WHERE id = ?",
-      [eventId]
-    );
+    const event = await db<EventRow>("events")
+      .select("id", "title")
+      .where({ id: eventId })
+      .first();
 
-    if (eventRows.length === 0) {
+    if (!event) {
       logger.warn(`Mark presence failed: event not found [eventId: ${eventId}]`);
-      return res.status(404).json({ message: "Event not found" });
+      return res.status(404).json({
+        ok: false,
+        code: "EVENT_NOT_FOUND",
+        message: "The event you are attempting to RSVP to could not be found."
+      });
     }
 
     // Upsert presence record
-    await pool.execute(
+    await db.raw(
       `INSERT INTO event_presence (event_id, user_id, status)
        VALUES (?, ?, ?)
        ON DUPLICATE KEY UPDATE status = VALUES(status), updated_at = CURRENT_TIMESTAMP`,
@@ -725,19 +779,18 @@ export async function markPresence(req: AuthenticatedRequest, res: Response, nex
     );
 
     // Get updated RSVP summary
-    const [summaryRows] = await pool.execute<RowDataPacket[]>(
-      `SELECT 
-         COALESCE(SUM(CASE WHEN status = 'yes' THEN 1 ELSE 0 END), 0) AS yes_count,
-         COALESCE(SUM(CASE WHEN status = 'no' THEN 1 ELSE 0 END), 0) AS no_count,
-         COALESCE(SUM(CASE WHEN status = 'maybe' THEN 1 ELSE 0 END), 0) AS maybe_count
-       FROM event_presence
-       WHERE event_id = ?`,
-      [eventId]
-    );
+    const summaryRow: any = await db("event_presence")
+      .where({ event_id: eventId })
+      .select(
+        db.raw("COALESCE(SUM(CASE WHEN status = 'yes' THEN 1 ELSE 0 END), 0) AS yes_count"),
+        db.raw("COALESCE(SUM(CASE WHEN status = 'no' THEN 1 ELSE 0 END), 0) AS no_count"),
+        db.raw("COALESCE(SUM(CASE WHEN status = 'maybe' THEN 1 ELSE 0 END), 0) AS maybe_count")
+      )
+      .first();
 
-    const yesCount = Number(summaryRows[0]?.yes_count || 0);
-    const noCount = Number(summaryRows[0]?.no_count || 0);
-    const maybeCount = Number(summaryRows[0]?.maybe_count || 0);
+    const yesCount = Number(summaryRow?.yes_count || 0);
+    const noCount = Number(summaryRow?.no_count || 0);
+    const maybeCount = Number(summaryRow?.maybe_count || 0);
 
     logger.info(`Presence marked [eventId: ${eventId}, userId: ${currentUserId}, status: "${rawStatus}", totals: { yes: ${yesCount}, maybe: ${maybeCount}, no: ${noCount} }]`);
 
@@ -755,7 +808,11 @@ export async function markPresence(req: AuthenticatedRequest, res: Response, nex
   } catch (err) {
     logger.error(`Mark presence error [eventId: ${eventId}, userId: ${currentUserId}]:`, err);
     if (next) return next(err);
-    return res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({
+      ok: false,
+      code: "MARK_PRESENCE_FAILED",
+      message: "Unable to record your attendance at this time. Please try again."
+    });
   }
 }
 
@@ -768,28 +825,33 @@ export async function getPresence(req: Request, res: Response, next?: NextFuncti
 
   if (isNaN(eventId)) {
     logger.warn(`Get presence failed: invalid event ID [param: "${req.params.id}"]`);
-    return res.status(400).json({ message: "Invalid event ID" });
+    return res.status(400).json({
+      ok: false,
+      code: "INVALID_EVENT_ID",
+      message: "The event ID is invalid. It must be a valid number."
+    });
   }
 
   try {
-    const [eventRows] = await pool.execute<EventRow[]>(
-      "SELECT id, title FROM events WHERE id = ?",
-      [eventId]
-    );
+    const event = await db<EventRow>("events")
+      .select("id", "title")
+      .where({ id: eventId })
+      .first();
 
-    if (eventRows.length === 0) {
+    if (!event) {
       logger.warn(`Get presence failed: event not found [eventId: ${eventId}]`);
-      return res.status(404).json({ message: "Event not found" });
+      return res.status(404).json({
+        ok: false,
+        code: "EVENT_NOT_FOUND",
+        message: "The requested event could not be found."
+      });
     }
 
-    const [attendeeRows] = await pool.execute<PresenceAttendeeRow[]>(
-      `SELECT p.user_id, u.name, u.email, p.status, p.updated_at
-       FROM event_presence p
-       JOIN users u ON p.user_id = u.id
-       WHERE p.event_id = ?
-       ORDER BY p.updated_at DESC`,
-      [eventId]
-    );
+    const attendeeRows = (await db("event_presence as p")
+      .join("users as u", "p.user_id", "u.id")
+      .select("p.user_id", "u.name", "u.email", "p.status", "p.updated_at")
+      .where("p.event_id", eventId)
+      .orderBy("p.updated_at", "desc")) as PresenceAttendeeRow[];
 
     const yesAttendees = attendeeRows
       .filter((a) => a.status === "yes")
@@ -808,7 +870,7 @@ export async function getPresence(req: Request, res: Response, next?: NextFuncti
     return res.json({
       ok: true,
       eventId,
-      eventTitle: eventRows[0].title,
+      eventTitle: event.title,
       rsvpSummary: {
         yes: yesAttendees.length,
         maybe: maybeAttendees.length,
@@ -823,6 +885,10 @@ export async function getPresence(req: Request, res: Response, next?: NextFuncti
   } catch (err) {
     logger.error(`Get presence error [eventId: ${eventId}]:`, err);
     if (next) return next(err);
-    return res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({
+      ok: false,
+      code: "FETCH_PRESENCE_FAILED",
+      message: "Unable to retrieve attendance details at this time. Please try again."
+    });
   }
 }

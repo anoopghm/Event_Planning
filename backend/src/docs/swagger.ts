@@ -84,18 +84,28 @@ This API provides comprehensive backend endpoints for managing events, user auth
       ValidationErrorResponse: {
         type: "object",
         properties: {
-          message: { type: "string", example: "Validation failed" },
+          ok: { type: "boolean", example: false },
+          code: { type: "string", example: "VALIDATION_ERROR" },
+          message: { type: "string", example: "Please enter a valid email address." },
           errors: {
             type: "array",
             items: {
               type: "object",
               properties: {
-                type: { type: "string", example: "field" },
-                value: { type: "string", example: "invalid_input" },
+                field: { type: "string", example: "email" },
+                message: { type: "string", example: "Please enter a valid email address." },
                 msg: { type: "string", example: "Please enter a valid email address." },
-                path: { type: "string", example: "email" },
+                value: { type: "string", example: "invalid_input" },
                 location: { type: "string", example: "body" }
               }
+            }
+          },
+          fields: {
+            type: "object",
+            additionalProperties: { type: "string" },
+            example: {
+              email: "Please enter a valid email address.",
+              password: "Password must be at least 6 characters long."
             }
           }
         }

@@ -31,6 +31,25 @@ npm run build
 npm start
 ```
 
+## Database Migrations (Knex.js)
+
+Database migrations and schema definitions are managed using **Knex.js**. Migrations are located in `src/migrations/`.
+
+Migrations run automatically on server start (`npm run dev` or `npm start`). You can also execute them manually via CLI:
+
+- **Run latest migrations:**
+  ```bash
+  npm run migrate:latest
+  ```
+- **Rollback last migration batch:**
+  ```bash
+  npm run migrate:rollback
+  ```
+- **Create a new migration:**
+  ```bash
+  npm run migrate:make <migration_name>
+  ```
+
 ## API Documentation (Swagger / OpenAPI 3.0)
 
 Interactive API documentation is powered by Swagger UI and OpenAPI 3.0.
@@ -41,7 +60,7 @@ Interactive API documentation is powered by Swagger UI and OpenAPI 3.0.
 ### Using Swagger UI
 
 1. Start the server (`npm run dev` or `npm start`).
-2. Open `http://localhost:4000/api/docs` in your browser.
+2. Open `http://localhost:4000/docs` in your browser.
 3. Test public endpoints directly using **Try it out**.
 4. For protected endpoints (creating events, deleting events, marking RSVP):
    - Call `POST /api/auth/login` to obtain an `accessToken`.
