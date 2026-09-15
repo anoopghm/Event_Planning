@@ -25,7 +25,8 @@ export function requireAuth(req: AuthenticatedRequest, res: Response, next: Next
 
   if (!token) {
     return res.status(401).json({
-      message: "Authentication is required",
+      ok: false,
+      message: "Please sign in to continue.",
       code: "AUTH_REQUIRED"
     });
   }
@@ -41,13 +42,15 @@ export function requireAuth(req: AuthenticatedRequest, res: Response, next: Next
   } catch (err: any) {
     if (err.name === "TokenExpiredError") {
       return res.status(401).json({
-        message: "Access token has expired",
+        ok: false,
+        message: "Your session has expired. Please sign in again.",
         code: "TOKEN_EXPIRED"
       });
     }
 
     return res.status(401).json({
-      message: "Invalid or expired authentication token",
+      ok: false,
+      message: "Your session token is invalid or expired. Please sign in again.",
       code: "INVALID_TOKEN"
     });
   }

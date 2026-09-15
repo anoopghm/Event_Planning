@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response, Router } from "express";
-import { body, validationResult } from "express-validator";
+import { body } from "express-validator";
 import { requireAuth, optionalAuth, AuthenticatedRequest } from "../middleware/auth";
+import { validateRequest } from "../middleware/validate";
 import {
   createEvent,
   getEvents,
@@ -12,18 +13,6 @@ import {
 } from "../controllers/eventController";
 
 const router = Router();
-
-// Validation helper middleware
-function validateRequest(req: Request, res: Response, next: NextFunction) {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({
-      message: errors.array()[0].msg,
-      errors: errors.array()
-    });
-  }
-  return next();
-}
 
 /**
  * @route   POST /api/events
@@ -190,8 +179,11 @@ router.delete("/:id", requireAuth, async (req: AuthenticatedRequest, res: Respon
 const presenceValidation = [
   body().custom((value, { req }) => {
     const status = (req.body.status || req.body.presence || "").toString().toLowerCase().trim();
+    if (!status) {
+      throw new Error("Please provide an RSVP status: 'yes', 'no', or 'maybe'.");
+    }
     if (status !== "yes" && status !== "no" && status !== "maybe") {
-      throw new Error("Presence status must be either 'yes', 'no', or 'maybe'.");
+      throw new Error("Invalid RSVP status. Please specify 'yes', 'no', or 'maybe'.");
     }
     return true;
   })

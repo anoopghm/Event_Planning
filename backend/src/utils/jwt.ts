@@ -1,9 +1,8 @@
 import crypto from "crypto";
 import jwt, { JwtPayload, SignOptions } from "jsonwebtoken";
 import { CookieOptions } from "express";
-import { RowDataPacket, ResultSetHeader } from "mysql2";
 
-import pool from "../models/db";
+import db from "../models/db";
 import { logger } from "./logger";
 
 export interface TokenUser {
@@ -25,15 +24,15 @@ export interface RefreshTokenPayload extends JwtPayload {
   jti?: string;
 }
 
-interface RefreshTokenRow extends RowDataPacket {
+interface RefreshTokenRow {
   id: number;
   user_id: number;
   token_hash: string;
-  expires_at: Date;
+  expires_at: Date | string;
   revoked: number;
 }
 
-interface UserRow extends RowDataPacket {
+interface UserRow {
   id: number;
   name: string;
   email: string;
@@ -152,7 +151,7 @@ export function parseDurationToMs(duration: string): number {
 }
 
 /**
- * Store a hashed refresh token in MySQL with expiration
+ * Store a hashed refresh token in MySQL with expiration using Knex
  */
 export async function storeRefreshToken(userId: number, rawToken: string): Promise<void> {
   const tokenHash = hashToken(rawToken);
@@ -172,32 +171,31 @@ export async function storeRefreshToken(userId: number, rawToken: string): Promi
   // Format as MySQL DATETIME (YYYY-MM-DD HH:MM:SS)
   const mysqlDateTime = expiresAt.toISOString().slice(0, 19).replace("T", " ");
 
-  await pool.execute<ResultSetHeader>(
-    "INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)",
-    [userId, tokenHash, mysqlDateTime]
-  );
+  await db("refresh_tokens").insert({
+    user_id: userId,
+    token_hash: tokenHash,
+    expires_at: mysqlDateTime
+  });
 }
 
 /**
- * Revoke a single refresh token by marking it revoked in MySQL
+ * Revoke a single refresh token by marking it revoked in MySQL using Knex
  */
 export async function revokeRefreshToken(rawToken: string): Promise<boolean> {
   const tokenHash = hashToken(rawToken);
-  const [result] = await pool.execute<ResultSetHeader>(
-    "UPDATE refresh_tokens SET revoked = 1 WHERE token_hash = ?",
-    [tokenHash]
-  );
-  return result.affectedRows > 0;
+  const affected = await db("refresh_tokens")
+    .where({ token_hash: tokenHash })
+    .update({ revoked: 1 });
+  return affected > 0;
 }
 
 /**
- * Revoke all refresh tokens for a specific user (e.g. password change, security reset, or reuse detection)
+ * Revoke all refresh tokens for a specific user using Knex
  */
 export async function revokeAllUserRefreshTokens(userId: number): Promise<void> {
-  await pool.execute<ResultSetHeader>(
-    "UPDATE refresh_tokens SET revoked = 1 WHERE user_id = ?",
-    [userId]
-  );
+  await db("refresh_tokens")
+    .where({ user_id: userId })
+    .update({ revoked: 1 });
 }
 
 /**
@@ -226,20 +224,18 @@ export async function rotateRefreshToken(oldRawToken: string): Promise<{
 
   const tokenHash = hashToken(oldRawToken);
 
-  // 2. Query token record in database
-  const [rows] = await pool.execute<RefreshTokenRow[]>(
-    "SELECT id, user_id, token_hash, expires_at, revoked FROM refresh_tokens WHERE token_hash = ?",
-    [tokenHash]
-  );
+  // 2. Query token record in database via Knex
+  const tokenRecord = await db<RefreshTokenRow>("refresh_tokens")
+    .select("id", "user_id", "token_hash", "expires_at", "revoked")
+    .where({ token_hash: tokenHash })
+    .first();
 
-  if (rows.length === 0) {
+  if (!tokenRecord) {
     // Unknown token
     const err = new Error("Refresh token not found or already used");
     (err as any).code = "TOKEN_NOT_FOUND";
     throw err;
   }
-
-  const tokenRecord = rows[0];
 
   // 3. Check if already revoked -> potential token reuse attack!
   if (tokenRecord.revoked) {
@@ -259,20 +255,18 @@ export async function rotateRefreshToken(oldRawToken: string): Promise<{
     throw expErr;
   }
 
-  // 5. Verify user still exists in database
-  const [userRows] = await pool.execute<UserRow[]>(
-    "SELECT id, name, email FROM users WHERE id = ?",
-    [tokenRecord.user_id]
-  );
+  // 5. Verify user still exists in database via Knex
+  const user = await db<UserRow>("users")
+    .select("id", "name", "email")
+    .where({ id: tokenRecord.user_id })
+    .first();
 
-  if (userRows.length === 0) {
+  if (!user) {
     await revokeRefreshToken(oldRawToken);
     const userErr = new Error("User associated with this token no longer exists");
     (userErr as any).code = "USER_NOT_FOUND";
     throw userErr;
   }
-
-  const user = userRows[0];
 
   // 6. Revoke the old token (Refresh Token Rotation)
   await revokeRefreshToken(oldRawToken);
@@ -335,5 +329,3 @@ export function getClearCookieOptions(): CookieOptions {
     path: "/"
   };
 }
-
-

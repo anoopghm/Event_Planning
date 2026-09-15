@@ -1,8 +1,7 @@
 import crypto from "crypto";
 import { NextFunction, Request, Response } from "express";
 import bcrypt from "bcryptjs";
-import pool from "../models/db";
-import { ResultSetHeader, RowDataPacket } from "mysql2";
+import db from "../models/db";
 import {
   generateAccessToken,
   generateRefreshToken,
@@ -16,7 +15,7 @@ import {
 import { sendVerificationEmail } from "../utils/email";
 import { logger } from "../utils/logger";
 
-interface UserRow extends RowDataPacket {
+interface UserRow {
   id: number;
   name: string;
   email: string;
@@ -31,20 +30,32 @@ export async function register(req: Request, res: Response, next?: NextFunction)
   const normalizedEmail = email.toLowerCase().trim();
 
   try {
-    const [rows] = await pool.execute<UserRow[]>("SELECT id FROM users WHERE email = ?", [normalizedEmail]);
-    if (rows.length > 0) {
+    const existingUser = await db<UserRow>("users")
+      .select("id")
+      .where({ email: normalizedEmail })
+      .first();
+
+    if (existingUser) {
       logger.warn(`Registration rejected: email already registered [email: ${normalizedEmail}]`);
-      return res.status(409).json({ message: "An account with this email already exists" });
+      return res.status(409).json({
+        ok: false,
+        code: "EMAIL_ALREADY_EXISTS",
+        message: "An account with this email address already exists. Please sign in or use another email."
+      });
     }
 
     const hashed = await bcrypt.hash(password, 10);
     const verificationToken = crypto.randomBytes(32).toString("hex");
     const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
-    const [result] = await pool.execute<ResultSetHeader>(
-      "INSERT INTO users (name, email, password, is_verified, verification_token, verification_token_expires) VALUES (?, ?, ?, 0, ?, ?)",
-      [name.trim(), normalizedEmail, hashed, verificationToken, verificationExpires]
-    );
+    const [insertId] = await db("users").insert({
+      name: name.trim(),
+      email: normalizedEmail,
+      password: hashed,
+      is_verified: 0,
+      verification_token: verificationToken,
+      verification_token_expires: verificationExpires
+    });
 
     // Send verification email
     await sendVerificationEmail({
@@ -53,7 +64,7 @@ export async function register(req: Request, res: Response, next?: NextFunction)
       token: verificationToken
     });
 
-    logger.info(`User registered successfully [userId: ${result.insertId}, email: ${normalizedEmail}]`);
+    logger.info(`User registered successfully [userId: ${insertId}, email: ${normalizedEmail}]`);
 
     return res.status(201).json({
       ok: true,
@@ -61,7 +72,7 @@ export async function register(req: Request, res: Response, next?: NextFunction)
       email: normalizedEmail,
       requiresVerification: true,
       user: {
-        id: result.insertId,
+        id: insertId,
         name: name.trim(),
         email: normalizedEmail
       }
@@ -69,7 +80,11 @@ export async function register(req: Request, res: Response, next?: NextFunction)
   } catch (err) {
     logger.error(`Registration error [email: ${normalizedEmail}]:`, err);
     if (next) return next(err);
-    return res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({
+      ok: false,
+      code: "REGISTRATION_FAILED",
+      message: "We were unable to complete your registration. Please try again shortly."
+    });
   }
 }
 
@@ -78,21 +93,28 @@ export async function login(req: Request, res: Response, next?: NextFunction) {
   const normalizedEmail = email.toLowerCase().trim();
 
   try {
-    const [rows] = await pool.execute<UserRow[]>(
-      "SELECT id, password, name, email, is_verified FROM users WHERE email = ?",
-      [normalizedEmail]
-    );
+    const user = await db<UserRow>("users")
+      .select("id", "password", "name", "email", "is_verified")
+      .where({ email: normalizedEmail })
+      .first();
 
-    if (rows.length === 0) {
+    if (!user) {
       logger.warn(`Login failed: user not found [email: ${normalizedEmail}]`);
-      return res.status(401).json({ message: "Invalid email or password" });
+      return res.status(401).json({
+        ok: false,
+        code: "INVALID_CREDENTIALS",
+        message: "Incorrect email or password. Please verify your credentials and try again."
+      });
     }
 
-    const user = rows[0];
     const match = await bcrypt.compare(password, user.password);
     if (!match) {
       logger.warn(`Login failed: password mismatch [userId: ${user.id}, email: ${normalizedEmail}]`);
-      return res.status(401).json({ message: "Invalid email or password" });
+      return res.status(401).json({
+        ok: false,
+        code: "INVALID_CREDENTIALS",
+        message: "Incorrect email or password. Please verify your credentials and try again."
+      });
     }
 
     // Guard: Prevent login if email is not verified yet
@@ -130,7 +152,11 @@ export async function login(req: Request, res: Response, next?: NextFunction) {
   } catch (err) {
     logger.error(`Login error [email: ${normalizedEmail}]:`, err);
     if (next) return next(err);
-    return res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({
+      ok: false,
+      code: "LOGIN_FAILED",
+      message: "An error occurred while signing in. Please try again in a few moments."
+    });
   }
 }
 
@@ -142,26 +168,24 @@ export async function verifyEmail(req: Request, res: Response, next?: NextFuncti
     return res.status(400).json({
       ok: false,
       code: "TOKEN_REQUIRED",
-      message: "Verification token is required."
+      message: "Verification token is required. Please check your verification link."
     });
   }
 
   try {
-    const [rows] = await pool.execute<UserRow[]>(
-      "SELECT id, email, is_verified, verification_token_expires FROM users WHERE verification_token = ?",
-      [token.trim()]
-    );
+    const user = await db<UserRow>("users")
+      .select("id", "email", "is_verified", "verification_token_expires")
+      .where({ verification_token: token.trim() })
+      .first();
 
-    if (rows.length === 0) {
+    if (!user) {
       logger.warn("Email verification rejected: invalid or unknown token");
       return res.status(400).json({
         ok: false,
         code: "INVALID_TOKEN",
-        message: "Invalid or expired verification link. Please request a new one."
+        message: "This verification link is invalid or has already been used. Please request a new activation email."
       });
     }
-
-    const user = rows[0];
 
     // Check if token has expired
     if (user.verification_token_expires && new Date(user.verification_token_expires) < new Date()) {
@@ -169,16 +193,19 @@ export async function verifyEmail(req: Request, res: Response, next?: NextFuncti
       return res.status(400).json({
         ok: false,
         code: "TOKEN_EXPIRED",
-        message: "This verification link has expired. Please request a new verification email.",
+        message: "This verification link has expired. Please request a new verification email below.",
         email: user.email
       });
     }
 
     // Activate user and clear token
-    await pool.execute(
-      "UPDATE users SET is_verified = 1, verification_token = NULL, verification_token_expires = NULL WHERE id = ?",
-      [user.id]
-    );
+    await db("users")
+      .where({ id: user.id })
+      .update({
+        is_verified: 1,
+        verification_token: null,
+        verification_token_expires: null
+      });
 
     logger.info(`User email verified successfully [userId: ${user.id}, email: ${user.email}]`);
 
@@ -190,7 +217,11 @@ export async function verifyEmail(req: Request, res: Response, next?: NextFuncti
   } catch (err) {
     logger.error("Verify email error:", err);
     if (next) return next(err);
-    return res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({
+      ok: false,
+      code: "VERIFICATION_FAILED",
+      message: "Unable to verify email at this time. Please try again shortly."
+    });
   }
 }
 
@@ -199,6 +230,7 @@ export async function resendVerification(req: Request, res: Response, next?: Nex
   if (!email || typeof email !== "string" || !email.trim()) {
     return res.status(400).json({
       ok: false,
+      code: "EMAIL_REQUIRED",
       message: "Please provide a valid email address."
     });
   }
@@ -206,12 +238,12 @@ export async function resendVerification(req: Request, res: Response, next?: Nex
   const normalizedEmail = email.toLowerCase().trim();
 
   try {
-    const [rows] = await pool.execute<UserRow[]>(
-      "SELECT id, name, email, is_verified FROM users WHERE email = ?",
-      [normalizedEmail]
-    );
+    const user = await db<UserRow>("users")
+      .select("id", "name", "email", "is_verified")
+      .where({ email: normalizedEmail })
+      .first();
 
-    if (rows.length === 0) {
+    if (!user) {
       logger.info(`Resend verification requested for non-existent email [email: ${normalizedEmail}]`);
       // Obscure user presence for privacy
       return res.json({
@@ -219,8 +251,6 @@ export async function resendVerification(req: Request, res: Response, next?: Nex
         message: "If an account with this email exists, a verification link has been sent."
       });
     }
-
-    const user = rows[0];
 
     if (user.is_verified === 1) {
       logger.info(`Resend verification skipped: user already verified [userId: ${user.id}, email: ${user.email}]`);
@@ -234,10 +264,12 @@ export async function resendVerification(req: Request, res: Response, next?: Nex
     const newToken = crypto.randomBytes(32).toString("hex");
     const newExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-    await pool.execute(
-      "UPDATE users SET verification_token = ?, verification_token_expires = ? WHERE id = ?",
-      [newToken, newExpires, user.id]
-    );
+    await db("users")
+      .where({ id: user.id })
+      .update({
+        verification_token: newToken,
+        verification_token_expires: newExpires
+      });
 
     await sendVerificationEmail({
       to: user.email,
@@ -255,7 +287,11 @@ export async function resendVerification(req: Request, res: Response, next?: Nex
   } catch (err) {
     logger.error(`Resend verification error [email: ${normalizedEmail}]:`, err);
     if (next) return next(err);
-    return res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({
+      ok: false,
+      code: "RESEND_FAILED",
+      message: "Unable to resend verification email. Please try again shortly."
+    });
   }
 }
 
@@ -269,7 +305,8 @@ export async function refresh(req: Request, res: Response, next?: NextFunction) 
   if (!refreshToken || typeof refreshToken !== "string") {
     logger.warn("Token refresh rejected: refresh token missing");
     return res.status(400).json({
-      message: "Refresh token is required",
+      ok: false,
+      message: "A refresh token is required to maintain your session.",
       code: "REFRESH_TOKEN_REQUIRED"
     });
   }
@@ -304,14 +341,19 @@ export async function refresh(req: Request, res: Response, next?: NextFunction) 
     ) {
       logger.warn(`Token refresh rejected: ${err.message} [code: ${err.code}]`);
       return res.status(401).json({
-        message: err.message,
+        ok: false,
+        message: "Your session has expired. Please sign in again.",
         code: err.code
       });
     }
 
     logger.error("Refresh token unexpected error:", err);
     if (next) return next(err);
-    return res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({
+      ok: false,
+      code: "REFRESH_FAILED",
+      message: "Unable to refresh session. Please sign in again."
+    });
   }
 }
 
@@ -340,6 +382,10 @@ export async function logout(req: Request, res: Response, next?: NextFunction) {
   } catch (err) {
     logger.error("Logout error:", err);
     if (next) return next(err);
-    return res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({
+      ok: false,
+      code: "LOGOUT_FAILED",
+      message: "An error occurred while logging out. Please try again."
+    });
   }
 }

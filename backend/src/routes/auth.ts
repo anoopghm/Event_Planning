@@ -1,7 +1,8 @@
 import { NextFunction, Request, Response, Router } from "express";
-import { body, query, validationResult } from "express-validator";
+import { body, query } from "express-validator";
 import { register, login, refresh, logout, verifyEmail, resendVerification } from "../controllers/authController";
 import { AuthenticatedRequest, requireAuth, optionalAuth } from "../middleware/auth";
+import { validateRequest } from "../middleware/validate";
 
 const router = Router();
 
@@ -11,25 +12,25 @@ router.post(
     body("name")
       .trim()
       .notEmpty()
-      .withMessage("Please enter your full name."),
+      .withMessage("Please enter your full name.")
+      .isLength({ min: 2, max: 100 })
+      .withMessage("Full name must be between 2 and 100 characters."),
     body("email")
       .trim()
+      .notEmpty()
+      .withMessage("Please enter your email address.")
       .isEmail()
-      .withMessage("Please enter a valid email address.")
+      .withMessage("Please enter a valid email address (e.g. name@example.com).")
       .normalizeEmail(),
     body("password")
+      .notEmpty()
+      .withMessage("Please enter a password.")
       .isLength({ min: 6 })
-      .withMessage("Password must be at least 6 characters.")
+      .withMessage("Password must be at least 6 characters long.")
   ],
+  validateRequest,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({
-          message: errors.array()[0].msg,
-          errors: errors.array()
-        });
-      }
       return await register(req, res, next);
     } catch (err) {
       return next(err);
@@ -42,6 +43,8 @@ router.post(
   [
     body("email")
       .trim()
+      .notEmpty()
+      .withMessage("Please enter your email address.")
       .isEmail()
       .withMessage("Please enter a valid email address.")
       .normalizeEmail(),
@@ -49,15 +52,9 @@ router.post(
       .notEmpty()
       .withMessage("Please enter your password.")
   ],
+  validateRequest,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({
-          message: errors.array()[0].msg,
-          errors: errors.array()
-        });
-      }
       return await login(req, res, next);
     } catch (err) {
       return next(err);
@@ -75,8 +72,9 @@ router.post(
 
       if (!hasCookie && !hasBody && !hasHeader) {
         return res.status(400).json({
-          message: "Refresh token is required.",
-          code: "REFRESH_TOKEN_REQUIRED"
+          ok: false,
+          code: "REFRESH_TOKEN_REQUIRED",
+          message: "Refresh token is required. Please sign in to refresh your session."
         });
       }
 
@@ -86,7 +84,6 @@ router.post(
     }
   }
 );
-
 
 router.post("/logout", optionalAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -102,17 +99,11 @@ router.get(
     query("token")
       .trim()
       .notEmpty()
-      .withMessage("Verification token is required.")
+      .withMessage("Verification token is required. Please check your verification link.")
   ],
+  validateRequest,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({
-          message: errors.array()[0].msg,
-          errors: errors.array()
-        });
-      }
       return await verifyEmail(req, res, next);
     } catch (err) {
       return next(err);
@@ -126,17 +117,11 @@ router.post(
     body("token")
       .trim()
       .notEmpty()
-      .withMessage("Verification token is required.")
+      .withMessage("Verification token is required. Please check your verification link.")
   ],
+  validateRequest,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({
-          message: errors.array()[0].msg,
-          errors: errors.array()
-        });
-      }
       return await verifyEmail(req, res, next);
     } catch (err) {
       return next(err);
@@ -149,19 +134,15 @@ router.post(
   [
     body("email")
       .trim()
+      .notEmpty()
+      .withMessage("Please enter your email address.")
       .isEmail()
       .withMessage("Please enter a valid email address.")
       .normalizeEmail()
   ],
+  validateRequest,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({
-          message: errors.array()[0].msg,
-          errors: errors.array()
-        });
-      }
       return await resendVerification(req, res, next);
     } catch (err) {
       return next(err);
@@ -170,7 +151,7 @@ router.post(
 );
 
 router.get("/me", requireAuth, (req: AuthenticatedRequest, res: Response) => {
-  return res.json({ user: req.user });
+  return res.json({ ok: true, user: req.user });
 });
 
 export default router;
