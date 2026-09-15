@@ -54,7 +54,7 @@ Migrations run automatically on server start (`npm run dev` or `npm start`). You
 
 Interactive API documentation is powered by Swagger UI and OpenAPI 3.0.
 
-- **Interactive Swagger UI**: [http://localhost:4000/api/docs](http://localhost:4000/api/docs) (or [http://localhost:4000/docs](http://localhost:4000/docs))
+- **Interactive Swagger UI**:  [http://localhost:4000/docs](http://localhost:4000/docs)
 - **Raw OpenAPI 3.0 Spec (JSON)**: [http://localhost:4000/api/docs.json](http://localhost:4000/api/docs.json)
 
 ### Using Swagger UI

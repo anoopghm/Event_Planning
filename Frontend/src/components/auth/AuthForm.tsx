@@ -398,11 +398,11 @@ function AuthForm({ type }: AuthFormProps) {
         </div>
       </div>
 
-      <div className="relative hidden min-h-screen overflow-hidden bg-neutral-100 lg:block lg:w-1/2">
+      <div className="relative hidden min-h-screen items-center justify-center overflow-hidden border-l border-neutral-200/60 bg-white p-8 sm:p-12 lg:flex lg:w-1/2">
         <img
           src={eventImage}
           alt="Event planning"
-          className="absolute inset-0 h-full w-full object-cover object-center"
+          className="h-auto max-h-[85vh] w-full max-w-xl object-contain xl:max-w-2xl"
         />
       </div>
     </div>
